@@ -1,3 +1,7 @@
 /data
+<<<<<<< HEAD
 /Data
 */venv
+=======
+.DS_Store
+>>>>>>> b3864a5b665193b3468067e9394d90f62d51cddd
