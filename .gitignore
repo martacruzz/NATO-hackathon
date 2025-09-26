@@ -1,7 +1,16 @@
-/data
-<<<<<<< HEAD
-/Data
-*/venv
-=======
+# Ignore venvs
+venv/
+*/venv/
+
+# Ignore OS metadata
 .DS_Store
->>>>>>> b3864a5b665193b3468067e9394d90f62d51cddd
+
+# Ignore data
+data/
+Data/
+*.rar
+*.zip
+*.tar
+*.gz
+*.csv
+*.h5
