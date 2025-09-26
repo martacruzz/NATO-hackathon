@@ -43,19 +43,6 @@ def metrics_stage_1(true_label, predict_label):
 
     return tkr, tur, kp, fkr
 
-
-def outlier_check(distance_list):
-    distance = np.flip(np.sort(distance_list))
-    # print("distance:", distance)
-    distance_std = np.std(np.hstack([distance, -distance]))
-    threshold = distance[0]
-    for index in range(distance.shape[0]):
-        threshold = distance[index]
-        if distance[index] <= 3 * distance_std:
-            break
-    return threshold
-
-
 def position_coding(x):
     num_token, num_dims = x.size(-2), x.size(-1)
     p = torch.zeros((1, num_token, num_dims))
