@@ -8,7 +8,7 @@ import torch.optim as optim
 import numpy as np
 import os
 
-from .utils import outlier
+from utils import outlier
 
 
 def metrics_stage_1(true_label, predict_label):
@@ -70,7 +70,10 @@ class MyDataset(Dataset):
 
     def __getitem__(self, index):
         path, label = self.data[index]
-        x = np.load(path + '-a.npy')
+        # make path relative to project root
+        base_dir = os.path.join(os.path.dirname(__file__), "..")
+        full_path = os.path.join(base_dir, path + '-a.npy')
+        x = np.load(full_path)
         # resize feature into size 512
         x = x[0:self.time, :]
         x = x[:, 0:self.size]
