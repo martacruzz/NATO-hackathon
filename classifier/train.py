@@ -7,8 +7,66 @@ from contLoss import ContLoss
 import torch.optim as optim
 import numpy as np
 import os
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 from utils import outlier
+
+def metrics(true_label, predict_label, num_known, distance_scores=None):
+    """
+    Extended evaluation metrics for open-set classification.
+
+    Parameters
+    ----------
+    true_label : np.ndarray
+        Ground-truth labels (known classes = [0..num_known-1], unknown = -1).
+    predict_label : np.ndarray
+        Predicted labels (same convention, unknown = -1).
+    num_known : int
+        Number of known classes.
+    distance_scores : np.ndarray, optional
+        Confidence / distance scores per sample (lower = more confident).
+        Used for AUROC.
+
+    Returns
+    -------
+    results : dict
+        Dictionary with all metrics.
+    """
+
+    results = {}
+
+    tkr, tur, kp, fkr = metrics_stage_1(true_label, predict_label)
+    results["TKR"] = tkr
+    results["TUR"] = tur
+    results["KP"] = kp
+    results["FKR"] = fkr
+
+    # classification report - ignore unknowns for per-class metrics
+    valid_idx = true_label != -1
+    if np.any(valid_idx):
+        report = classification_report(
+            true_label[valid_idx],
+            predict_label[valid_idx],
+            labels=list(range(num_known)),
+            zero_division=0,
+            output_dict=True
+        )
+        results["classification_report"] = report
+
+    # confusion matrix including unknowns
+    labels_with_unknown = list(range(num_known)) + [-1]
+    cm = confusion_matrix(true_label, predict_label, labels=labels_with_unknown)
+    results["confusion_matrix"] = cm
+
+    # AUROC for known vs unknown
+    if distance_scores is not None:
+        y_true = (true_label == -1).astype(int) # 1 = unknown, 0 = known
+        auroc = roc_auc_score(y_true, distance_scores)
+        results["AUROC"] = auroc
+
+    return results
 
 
 def metrics_stage_1(true_label, predict_label):
@@ -360,15 +418,15 @@ def train(net, device, semantic_dims, lr, batch_size, margin, num_known_class, m
                 # read all testing data
                 test_X = torch.zeros((len(test_data_known) + len(test_data_unknown), semantic_dim))
                 test_Y = torch.zeros(len(test_data_known) + len(test_data_unknown))
-                confusion_matrix = np.zeros((num_known, num_known))
+                # confusion_matrix = np.zeros((num_known, num_known))
                 for i, data in enumerate(tqdm(test_loader_known)):
                     x_batch, y_batch, z_batch, label = data
                     x_batch, y_batch, z_batch, label = \
                         x_batch.to(device), y_batch.to(device), z_batch.to(device), label.to(device)
                     predict, test_X[i], _, _, _, _ = net(x_batch, y_batch, z_batch)
                     test_Y[i] = label
-                    pre = torch.max(predict.data, 1)[1]
-                    confusion_matrix[int(label.cpu().numpy())][int(pre.cpu().numpy())] += 1
+                    # pre = torch.max(predict.data, 1)[1]
+                    # confusion_matrix[int(label.cpu().numpy())][int(pre.cpu().numpy())] += 1
                 for i, data in enumerate(tqdm(test_loader_unknown)):
                     x_batch, y_batch, z_batch, label = data
                     x_batch, y_batch, z_batch, label = \
@@ -426,16 +484,40 @@ def train(net, device, semantic_dims, lr, batch_size, margin, num_known_class, m
                 for i in range(test_Y_normalized.shape[0]):
                     if test_Y_normalized[i] >= num_known:
                         test_Y_normalized[i] = -1
-
                 # ---------- REFACTORED ----------
+
                 # evaluate stage-1 metrics
-                tkr, tur, kp, fkr = metrics_stage_1(test_Y_normalized, label_hat)
+                # tkr, tur, kp, fkr = metrics_stage_1(test_Y_normalized, label_hat)
+                
+                results = metrics(test_Y_normalized,
+                                  label_hat,
+                                  num_known=num_known,
+                                  distance_scores=np.min(d, axis=1),
+                                  )
+                
+                tkr = results["TKR"]
+                tur = results["TUR"]
+                kp = results["KP"]
+                fkr = results["FKR"]
+                class_report = results["classification_report"]
+                cm = results["confusion_matrix"]
+                auroc = results["AUROC"]
+
                 print("----------------------evaluation end----------------------")
                 torch.save(net.state_dict(), './model/S3R/' + model_name + '.pkl')
-                print("current state epoch: {} | tkr: {} | tur: {} | kp: {}".format(epoch, tkr, tur, kp))
+                print("current state epoch: {} | tkr: {} | tur: {} | kp: {} | AUROC: {}".format(epoch, tkr, tur, kp, auroc))
+                print("classification report: ", class_report)
                 print("tur mistake:", tur_mistake)
                 indicator_log.append([epoch, np.round(tkr, 4), np.round(tur, 4), np.round(kp, 4), np.round(fkr, 4)])
+
+                # save embeddings, ground-truth, and predictions
+                np.save(f'./model/S3R/{model_name}_epoch{epoch}_embeddings.npy', test_X.cpu().numpy())
+                np.save(f'./model/S3R/{model_name}_epoch{epoch}_labels.npy', test_Y_normalized)
+                np.save(f'./model/S3R/{model_name}_epoch{epoch}_preds.npy', label_hat)
+                np.save(f'./model/S3R/{model_name}_epoch{epoch}_cm.npy', cm)
+        
         np.savetxt('./model/S3R/' + model_name + '_indicator' + '.txt', indicator_log)
+
 
 
 if __name__ == "__main__":
