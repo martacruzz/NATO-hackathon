@@ -14,3 +14,7 @@ Data/
 *.gz
 *.csv
 *.h5
+classifier/experiment_groups
+*.keras
+*.npy
+*.png
