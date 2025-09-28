@@ -156,6 +156,10 @@ class NET(nn.Module):
         self.SA_2 = nn.TransformerEncoderLayer(d_model=64, nhead=8, batch_first=True, dim_feedforward=256)
         self.SA_2 = nn.TransformerEncoder(self.SA_2, num_layers=3)
 
+        # modules for cross-attention
+        self.cross_attn_y_to_z = nn.MultiheadAttention(embed_dim=64, num_heads=4, batch_first=True)
+        self.cross_attn_z_to_y = nn.MultiheadAttention(embed_dim=64, num_heads=4, batch_first=True)
+
         self.encoding_to_sa1 = nn.Sequential(
             nn.Linear(self.input_size[1], 128),
             nn.ReLU(),
@@ -289,6 +293,16 @@ class NET(nn.Module):
         )
 
     def forward(self, x, y, z):
+
+        """
+        Forward function for the network
+        Params:
+            x: batch of features
+            y: time features
+            z: frequency features
+        """
+
+        # pass the data through the 3 cnn (with diferent granulations)
         encoder1 = self.encoder_d1(x)
         encoder2 = self.encoder_d3(x)
         encoder3 = self.encoder_d5(x)
@@ -298,19 +312,41 @@ class NET(nn.Module):
         x = self.encoder_to_semantic(x)
         expand_x = F.adaptive_avg_pool2d(encoder_output, (1, 1))
         expand_x = expand_x.view(expand_x.shape[0], -1)
+        
+        # treat time and frequency
         y = self.encoding_to_sa1(y)                 # [B, T, 64]
         z = self.encoding_to_sa2(z)                 # [B, W, 64]
         y = y + position_coding(y).to(self.device)
         z = z + position_coding(z).to(self.device)
+        
+        # apply self-attention (transformers)
         y = self.SA_1(y)                            # [B, T, 64]
         z = self.SA_2(z)                            # [B, W, 64]
+
+        # apply cross-attention
+        y_cross, _ = self.cross_attn_y_to_z(y, z, z) # y queries, z provides keys/values
+        z_cross, _ = self.cross_attn_z_to_y(z, y, y) # z queries, y provides keys/values
+        
+        # residual + fusion
+        y = y + y_cross
+        z = z + z_cross
+
+        # flatten data after self-attention
         y = y.view(y.shape[0], -1)                  # [B, T*64]
         z = z.view(z.shape[0], -1)                  # [B, W*64]
+        
+        # pass through semantics
         y = self.sa1_to_semantic(y)                 # [B, T*64] -> [B, semantic dim]
         z = self.sa2_to_semantic(z)                 # [B, W*64] -> [B, semantic dim]
+        
+        # concat semantics from time and frequency
         semantic = torch.cat([x, y], dim=1)
         semantic = torch.cat([semantic, z], dim=1)
+        
+        # produce total semantics
         semantic = self.total_semantic(semantic)  # [B, 128*3] -> [B, 128]
+        
+        # obtain classification
         predict = self.semantic_to_classifier(semantic)
 
         return predict, semantic, x, y, z, expand_x
