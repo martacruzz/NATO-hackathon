@@ -1,0 +1,33 @@
+# Data configuration file
+
+train: ../yolo_dataset/images/train
+val: ../yolo_dataset/images/val
+test: ../yolo_dataset/images/test  # Optional
+
+nc: 24
+names: [
+  "Background, including WiFi and Bluetooth",
+  "DJI Phantom 3",
+  "DJI Phantom 4 Rro",
+  "DJI MATRICE 200",
+  "DJI MATRICE 100",
+  "DJI Air 2S",
+  "DJI Mini 3 Pro",
+  "DJI Inspire 2",
+  "DJI Mavic Pro",
+  "DJI Mini 2",
+  "DJI Mavic 3",
+  "DJI MATRICE 300",
+  "DJI Phantom 4 Pro RTK",
+  "DJI MATRICE 30T",
+  "DJI AVATA",
+  "DJI DIY",
+  "DJI MATRICE 600 Pro",
+  "VBar",
+  "FrSky X20",
+  "Futaba T16IZ",
+  "Taranis Plus",
+  "RadioLink AT9S",
+  "Futaba T14SG",
+  "Skydroid"
+]
