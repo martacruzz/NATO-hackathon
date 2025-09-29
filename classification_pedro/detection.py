@@ -28,7 +28,7 @@ def detect_drones_in_spectrogram(spectrogram_path, output_dir='detections'):
     energy = np.sum(band_data, axis=0)
     energy = (energy - np.min(energy)) / (np.max(energy) - np.min(energy))  # Normalize
     
-    # Thresholding (adjust based on your data)
+    # Thresholding
     threshold = 0.6
     drone_regions = energy > threshold
     
@@ -67,5 +67,4 @@ def detect_drones_in_spectrogram(spectrogram_path, output_dir='detections'):
     print(f"✓ Detection saved to: {output_path}")
     return drone_regions
 
-# Example usage (run after saving spectrograms as .npy)
 detect_drones_in_spectrogram('spectrogram_data.npy')

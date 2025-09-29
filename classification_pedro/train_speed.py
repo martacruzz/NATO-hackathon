@@ -1,6 +1,7 @@
 # this is like train.py but tries to use all resources available, making it way more heavy,
 # but hopefully faster
-# Also, since this is a newer and fully tested version, it may have better results than normal training
+# Also, since this is a newer and fully tested version, 
+# it may have better results than normal training
 
 import os
 import numpy as np
@@ -26,7 +27,7 @@ def get_safe_resources():
     safe_cores = max(1, total_cores - 1)
     safe_ram = available_ram * 0.7
     max_images_per_batch = int((safe_ram * 1024) / 0.26)
-    batch_size = min(64, max_images_per_batch)  # Reduced from 256 to 64
+    batch_size = min(64, max_images_per_batch)  # Reduced to ensure quality
     batch_size = max(16, batch_size)
     return {
         'total_ram': total_ram,
@@ -38,7 +39,7 @@ def get_safe_resources():
     }
 
 resources = get_safe_resources()
-print(f"📊 System Resources:")
+print(f"System Resources:")
 print(f"  Total RAM: {resources['total_ram']:.1f} GB")
 print(f"  Available RAM: {resources['available_ram']:.1f} GB")
 print(f"  Safe RAM for processing: {resources['safe_ram']:.1f} GB")
@@ -55,11 +56,11 @@ if gpus:
     try:
         for gpu in gpus:
             tf.config.experimental.set_memory_growth(gpu, True)
-        print("✅ GPU acceleration enabled")
+        print("GPU acceleration enabled")
     except RuntimeError as e:
-        print(f"⚠️ GPU configuration failed: {e}")
+        print(f"GPU configuration failed: {e}")
 else:
-    print("⚠️ No GPU detected - using CPU only")
+    print("No GPU detected - using CPU only")
 
 # ======================
 # CONFIGURATION
@@ -140,7 +141,7 @@ def data_generator(files, labels, batch_size=4, img_size=(256, 256), is_training
                     spec = (spec - np.min(spec)) / (np.max(spec) - np.min(spec) + 1e-8)
                     batch_images.append(spec)
                 except Exception as e:
-                    print(f"⚠️ Skipping {file}: {str(e)}")
+                    print(f"Skipping {file}: {str(e)}")
             
             gc.collect()
             if not batch_images:
@@ -179,7 +180,7 @@ model.compile(
 )
 
 # Step 6: Train with appropriate batch size
-batch_size = resources['batch_size']  # Now 64 instead of 256
+batch_size = resources['batch_size']
 steps_per_epoch = max(1, len(train_files) // batch_size)
 validation_steps = max(1, len(test_files) // batch_size)
 
@@ -210,7 +211,7 @@ print(f"Model built: {model.built}")
 print(f"Number of layers: {len(model.layers)}")
 model.summary()
 
-# 7. Create embedding model (now safe to do)
+# 7. Create embedding model (should be safe to do, hopefully)
 input_tensor = model.layers[0].input
 embedding_model = tf.keras.Model(
     inputs=input_tensor,
@@ -257,7 +258,7 @@ for class_idx in range(len(CLASSES)):
 
 np.save('class_centers.npy', np.array(class_centers))
 np.save('class_thresholds.npy', np.array(class_thresholds))
-print("✅ Class centers and thresholds saved")
+print("[SUCCESS] Class centers and thresholds saved")
 
 # Clean up
 tf.keras.backend.clear_session()

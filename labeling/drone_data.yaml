@@ -2,7 +2,7 @@
 
 train: ../yolo_dataset/images/train
 val: ../yolo_dataset/images/val
-test: ../yolo_dataset/images/test  # Optional
+test: ../yolo_dataset/images/test
 
 nc: 24
 names: [

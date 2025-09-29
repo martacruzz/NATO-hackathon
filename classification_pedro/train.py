@@ -11,7 +11,7 @@ import cv2
 import gc
 
 # Configuration
-DATASET_DIR = "../data"  # Replace with your actual path
+DATASET_DIR = "../data" 
 CLASSES = [
     "Background, including WiFi and Bluetooth",
     "DJI Phantom 3",
@@ -94,7 +94,7 @@ def data_generator(files, labels, batch_size=4, img_size=(256, 256), is_training
                     
                     batch_images.append(spec)
                 except Exception as e:
-                    print(f"⚠️ Skipping {file}: {str(e)}")
+                    print(f"Skipping {file}: {str(e)}")
             
             # Free memory immediately
             gc.collect()
@@ -106,7 +106,7 @@ def data_generator(files, labels, batch_size=4, img_size=(256, 256), is_training
             batch_labels = to_categorical(batch_labels, num_classes=len(CLASSES))
             yield batch_images, batch_labels
 
-# Step 4: Build lightweight model (4x smaller than original)
+# Step 4: Build lightweight model
 model = Sequential([
     # First block (256 → 128)
     Conv2D(8, (3, 3), strides=2, padding='same', activation='relu', input_shape=(256, 256, 1)),
@@ -169,7 +169,7 @@ history = model.fit(
 
 # Step 7: Save final model
 model.save('final_drone_classifier.h5')
-print("\n✅ Model saved as 'final_drone_classifier.h5'")
+print("\nModel saved as 'final_drone_classifier.h5'")
 
 # Clean up
 tf.keras.backend.clear_session()

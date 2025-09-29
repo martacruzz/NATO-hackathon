@@ -1,3 +1,11 @@
+# This file attemps to label data for the creation of the yolo model.
+# However, the outputed data is not very nice, it would be way better to actually have already
+# labeled data. 
+# Well, beggers can't be choosers, I guess.
+
+# Also, this file could also be way better if we used open-cv to actually label the data,
+# but, due to time constrains, it's not feasible
+
 import os
 import numpy as np
 

@@ -198,10 +198,10 @@ def evaluate_dataset(data_dir, confidence_threshold=0.5):
 
 def print_evaluation_results(results):
     """Print evaluation results in a readable format"""
-    print("\n📊 Evaluation Results:")
-    print(f"✅ Overall Accuracy: {results['accuracy']:.4f}")
-    print(f"✅ Macro Precision: {results['macro_precision']:.4f}")
-    print(f"✅ Macro Recall: {results['macro_recall']:.4f}")
+    print("\nEvaluation Results:")
+    print(f"Overall Accuracy: {results['accuracy']:.4f}")
+    print(f"Macro Precision: {results['macro_precision']:.4f}")
+    print(f"Macro Recall: {results['macro_recall']:.4f}")
     
     print("\n🔍 Per-class Metrics:")
     for i, class_name in enumerate(CLASSES):
@@ -211,7 +211,7 @@ def print_evaluation_results(results):
     
     # Unknown class metrics
     unknown_idx = len(CLASSES)
-    print(f"\n❓ Unknown Class:")
+    print(f"\nUnknown Class:")
     print(f"  Precision: {results['class_precision'][unknown_idx]:.4f}")
     print(f"  Recall: {results['class_recall'][unknown_idx]:.4f}")
 
