@@ -18,4 +18,5 @@ Data/
 *.npy
 *.png
 
-/classifier/model
+*/model
+*/__pycache__
