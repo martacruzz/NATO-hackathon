@@ -596,8 +596,8 @@ def train(net, device, semantic_dims, lr, batch_size, margin, num_known_class, m
     lr_scheduler_center = optim.lr_scheduler.StepLR(optimizer_center, step_size=10, gamma=0.98)
 
     # ------------------------------START LEARNING---------------------------------#
-    max_epoch = 251
-    interval = 50 # how often we run evaluation and save metrics
+    max_epoch = 1
+    interval = 1 # how often we run evaluation and save metrics
     loss_log = []
     indicator_log = []
     print("START LEARNING !!")
@@ -661,7 +661,7 @@ def train(net, device, semantic_dims, lr, batch_size, margin, num_known_class, m
                 # train_Y = torch tensor (N,)
                 class_means, precisions, covariances = outlier.compute_class_stats(train_X, train_Y, num_known, semantic_dim, reg_lambda=1e-3, use_ledoit=False)
                 # compute per-class percentile thresholds (distance domain)
-                percentile = 95.0
+                percentile = 99.0 # TODO change this accordingly
                 thresholds = outlier.per_class_thresholds_percentile(train_X, train_Y, class_means, precisions, percentile)
                 # thresholds is array shape (num_known, ) - distances in same units as sqrt(d2)
 
@@ -724,7 +724,7 @@ def train(net, device, semantic_dims, lr, batch_size, margin, num_known_class, m
                         # EVT refinement
                         if weibull_probs is not None:
                             # tail probability for being an outlier
-                            evt_cutoff = 0.5 # TODO tune on validation
+                            evt_cutoff = 0.7 # TODO tune on validation
                             if weibull_probs[i, cand] > evt_cutoff:
                                 label_hat[i] = -1
                             else:
