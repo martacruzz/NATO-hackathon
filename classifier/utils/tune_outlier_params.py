@@ -62,6 +62,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import numpy as np
 import torch
 from tqdm import tqdm
+import torch
+from torch.utils.data import DataLoader
 
 from outlier import (
     compute_class_stats,
@@ -73,6 +75,10 @@ from outlier import (
 )
 
 from train import metrics_stage_1
+
+from train import NET, MyDataset
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def tune_outlier_params(
     net, device,
@@ -172,3 +178,58 @@ def tune_outlier_params(
     print("\n==== Best Config ====")
     print(f"percentile={best_cfg[0]}, cutoff={best_cfg[1]}, metrics={best_cfg[2]}")
     return best_cfg
+
+
+def main():
+    # ==== Parameters (must match training setup) ====
+    semantic_dim = 128
+    num_known_class = 18
+    in_channels = 1
+    input_size = [512, 512]  # T, W dimensions (adjust if different)
+    len_time = 1
+    gamma = 0.75
+    my_index = 1
+
+    # ==== Load model ====
+    net = NET(in_channels=in_channels,
+              input_size=input_size,
+              semantic_dim=semantic_dim,
+              num_class=num_known_class,
+              device=device).to(device)
+
+    model_name = f"group_{my_index}_margin_8_dim_{semantic_dim}_length_{len_time}_gamma_{gamma}_tips_(xyz_for_loss_curve)"
+    checkpoint_path = os.path.join("./model/S3R", model_name + ".pkl")
+
+    net.load_state_dict(torch.load(checkpoint_path, map_location=device))
+    print(f"Loaded checkpoint from {checkpoint_path}")
+
+    # ==== Build dataloaders ====
+    train_data = MyDataset(path_txt=f'./experiment_groups/{my_index}-known_for_train',
+                           len_time=len_time, gamma=gamma, size=512)
+    test_data_known = MyDataset(path_txt=f'./experiment_groups/{my_index}-known_for_test',
+                                len_time=len_time, gamma=gamma, size=512)
+    test_data_unknown = MyDataset(path_txt=f'./experiment_groups/{my_index}-unknown',
+                                  len_time=len_time, gamma=gamma, size=512)
+
+    train_loader_for_eval = DataLoader(train_data, batch_size=1, shuffle=False)
+    test_loader_known = DataLoader(test_data_known, batch_size=1, shuffle=False)
+    test_loader_unknown = DataLoader(test_data_unknown, batch_size=1, shuffle=False)
+
+    # ==== Run tuning ====
+    best_cfg = tune_outlier_params(
+        net=net,
+        device=device,
+        train_loader_for_eval=train_loader_for_eval,
+        test_loader_known=test_loader_known,
+        test_loader_unknown=test_loader_unknown,
+        num_known=num_known_class,
+        semantic_dim=semantic_dim,
+        percentiles=[90, 95, 99],
+        evt_cutoffs=[0.1, 0.3, 0.5]
+    )
+
+    print("Best configuration:", best_cfg)
+
+
+if __name__ == "__main__":
+    main()

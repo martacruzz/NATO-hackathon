@@ -796,5 +796,3 @@ if __name__ == "__main__":
               num_class=num_known, device=device).to(device)
     train(net=Net, device=device, semantic_dims=semantic_dim, lr=1e-4, batch_size=32
           , margin=margin, num_known_class=num_known, my_index=my_index, gamma=gamma, len_time=len_time, tips=tips)
-
-
