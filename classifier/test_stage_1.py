@@ -5,6 +5,65 @@ import numpy as np
 from train import MyDataset
 from train import NET
 
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score
+from utils import outlier
+
+
+def metrics(true_label, predict_label, num_known, distance_scores=None):
+    """
+    Extended evaluation metrics for open-set classification.
+
+    Parameters
+    ----------
+    true_label : np.ndarray
+        Ground-truth labels (known classes = [0..num_known-1], unknown = -1).
+    predict_label : np.ndarray
+        Predicted labels (same convention, unknown = -1).
+    num_known : int
+        Number of known classes.
+    distance_scores : np.ndarray, optional
+        Confidence / distance scores per sample (lower = more confident).
+        Used for AUROC.
+
+    Returns
+    -------
+    results : dict
+        Dictionary with all metrics.
+    """
+
+    results = {}
+
+    tkr, tur, kp, fkr, accuracy = metrics_stage_1(true_label, predict_label)
+    results["TKR"] = tkr
+    results["TUR"] = tur
+    results["KP"] = kp
+    results["FKR"] = fkr
+    results["ACC"] = accuracy
+
+    # classification report - ignore unknowns for per-class metrics
+    valid_idx = true_label != -1
+    if np.any(valid_idx):
+        report = classification_report(
+            true_label[valid_idx],
+            predict_label[valid_idx],
+            labels=list(range(num_known)),
+            zero_division=0,
+            output_dict=True
+        )
+        results["classification_report"] = report
+
+    # confusion matrix including unknowns
+    labels_with_unknown = list(range(num_known)) + [-1]
+    cm = confusion_matrix(true_label, predict_label, labels=labels_with_unknown)
+    results["confusion_matrix"] = cm
+
+    # AUROC for known vs unknown
+    if distance_scores is not None:
+        y_true = (true_label == -1).astype(int) # 1 = unknown, 0 = known
+        auroc = roc_auc_score(y_true, distance_scores)
+        results["AUROC"] = auroc
+
+    return results
 
 def metrics_stage_1(true_label, predict_label):
     num_samples = predict_label.shape[0]
@@ -49,18 +108,6 @@ def metrics_stage_1(true_label, predict_label):
     return tkr, tur, kp, fkr, accuracy
 
 
-def outlier_check(distance_list):
-    distance = np.flip(np.sort(distance_list))
-    # print("distance:", distance)
-    distance_std = np.std(np.hstack([distance, -distance]))
-    threshold = distance[0]
-    for index in range(distance.shape[0]):
-        threshold = distance[index]
-        if distance[index] <= 3 * distance_std:
-            break
-    return threshold
-
-
 if __name__ == "__main__":
     tips = '(xyz_for_loss_curve)'
     my_index = 1
@@ -103,31 +150,38 @@ if __name__ == "__main__":
                 x_batch.to(device), y_batch.to(device), z_batch.to(device), label.to(device)
             _, train_X[i], _, _, _, _ = Net(x_batch, y_batch, z_batch)
             train_Y[i] = label
-        theta = torch.zeros(num_known)                                     
-        dist_matrix = np.zeros((num_known, semantic_dim, semantic_dim)) 
-        class_centers = torch.zeros((num_known, semantic_dim))             
-        for clas in range(num_known):
-            samples = train_X[train_Y == clas].cpu().numpy()
-            covariance_mat = np.cov(samples, rowvar=False, bias=True)
-            dist_matrix[clas] = np.linalg.pinv(covariance_mat)
-            class_centers[clas] = torch.mean(train_X[train_Y == clas], dim=0)
-            x = (train_X[train_Y == clas] - class_centers[clas].expand([samples.shape[0], semantic_dim]))
-            x = x.cpu().numpy()
-            dist_list = np.sqrt(np.matmul(np.matmul(x, dist_matrix[clas]), np.transpose(x))).diagonal()
-            theta[clas] = outlier_check(dist_list)
+
+  
+        # ---------- REFACTORED ----------
+        # compute class stats with regularized cov + precision
+        # train_X = torch tensor (N, D)
+        # train_Y = torch tensor (N,)
+        class_means, precisions, covariances = outlier.compute_class_stats(train_X, train_Y, num_known, semantic_dim, reg_lambda=1e-3, use_ledoit=False)
+        # compute per-class percentile thresholds (distance domain)
+        percentile = 95.0
+        thresholds = outlier.per_class_thresholds_percentile(train_X, train_Y, class_means, precisions, percentile)
+        # thresholds is array shape (num_known, ) - distances in same units as sqrt(d2)
+
+        # fit EVT weibull models to each class tail
+        use_evt = True
+        weibull_models = None
+        if use_evt:
+            weibull_models =  outlier.fit_weibull_per_class(train_X, train_Y, class_means, precisions, tail_size=20)
+        # ---------- REFACTORED ----------
+
         # read all testing data
         test_X = torch.zeros((len(known_test_data) + len(unknown_test_data), semantic_dim))
         test_X_expand = torch.zeros((len(known_test_data) + len(unknown_test_data), expand_semantic_dim * 3))
         test_Y = torch.zeros(len(known_test_data) + len(unknown_test_data))
-        confusion_matrix = np.zeros((num_known, num_known))
+        # confusion_matrix = np.zeros((num_known, num_known))
         for i, data in enumerate(tqdm(known_test_loader)):
             x_batch, y_batch, z_batch, label = data
             x_batch, y_batch, z_batch, label = \
                 x_batch.to(device), y_batch.to(device), z_batch.to(device), label.to(device)
             predict, test_X[i], _, _, _, test_X_expand[i] = Net(x_batch, y_batch, z_batch)
             test_Y[i] = label
-            pre = torch.max(predict.data, 1)[1]
-            confusion_matrix[int(label.cpu().numpy())][int(pre.cpu().numpy())] += 1
+            # pre = torch.max(predict.data, 1)[1]
+            # confusion_matrix[int(label.cpu().numpy())][int(pre.cpu().numpy())] += 1
         for i, data in enumerate(tqdm(unknown_test_loader)):
             x_batch, y_batch, z_batch, label = data
             x_batch, y_batch, z_batch, label = \
@@ -135,51 +189,95 @@ if __name__ == "__main__":
             _, test_X[len(known_test_data) + i], _, _, _, test_X_expand[len(known_test_data) + i] = Net(x_batch, y_batch, z_batch)
             test_Y[len(known_test_data) + i] = label
 
+        # ---------- REFACTORED ----------
         # start evaluation at stage 1
-        d_ct = np.zeros((test_X.shape[0], num_known))
-        for xi in range(num_known):
-            for xj in range(test_X.shape[0]):
-                x = (test_X[xj] - class_centers[xi]).cpu().numpy()
-                d_ct[xj, xi] = np.sqrt(np.matmul(np.matmul(x, dist_matrix[xi]), np.transpose(x)))
-        Theta = theta.expand([test_X.shape[0], num_known]).numpy()
-        x_ct = d_ct - Theta
-        label_hat = np.zeros(test_X.shape[0])
-        tur_mistake = np.zeros((num_total - num_known, num_known))
-        for xi in range(test_X.shape[0]):
-            if np.min(x_ct[xi]) > 0:
-                label_hat[xi] = -1 
-            else:
-                label_hat[xi] = np.argmin(x_ct[xi])
-                if test_Y[xi] >= num_known:
-                    tur_mistake[int(test_Y[xi] - num_known), np.argmin(x_ct[xi])] += 1 
-        test_Y_normalized = test_Y.cpu().numpy().copy()
-        for xi in range(test_Y_normalized.shape[0]):
-            if test_Y_normalized[xi] >= num_known:
-                test_Y_normalized[xi] = -1 
+        # test_X: torch tensor(M, D) OR numpy array (M, D)
+        if hasattr(test_X, "cpu"):
+            test_X_np = test_X.cpu().numpy()
+        else:
+            test_X_np = np.array(test_X)
 
-        tkr, tur, kp, fkr, accuracy = metrics_stage_1(test_Y_normalized, label_hat)
+        # get squared Mahalanobis distances (M, C)
+        d2 = outlier.batch_mahalanobis_sq(test_X_np, class_means, precisions) # squared distances
+        d = np.sqrt(np.maximum(d2, 0.0)) # normal distances
+
+        # decision by threshold: compute d - threshold (broadcast)
+        x_ct = d - thresholds[np.newaxis, :] # shape (M,C)
+
+        # compute EVT outlier probabilities
+        if use_evt and outlier.SCIPY_AVAILABLE and weibull_models is not None:
+            weibull_probs = outlier.weibull_outlier_probability(d, weibull_models) # (M, C)
+        else:
+            weibull_probs = None
+        
+        
+        label_hat = np.zeros(test_X_np.shape[0], dtype=np.int32)
+        tur_mistake = np.zeros((num_total - num_known, num_known))
+        for i in range(test_X_np.shape[0]):
+            # first criterion: mahalanobis distance thresholding
+            if np.min(x_ct[i]) > 0:
+                label_hat[i] = -1 # unknown
+            else:
+                cand = int(np.argmin(x_ct[i])) # nearest known class
+
+                # EVT refinement
+                if weibull_probs is not None:
+                    # tail probability for being an outlier
+                    evt_cutoff = 0.5 # TODO tune on validation
+                    if weibull_probs[i, cand] > evt_cutoff:
+                        label_hat[i] = -1
+                    else:
+                        label_hat[i] = cand
+                else:
+                    label_hat[i] = cand
+
+            # bookkeeping: if this was actually an unknown sample but we missclassified it
+            if test_Y[i] >= num_known and label_hat[i] != -1:
+                tur_mistake[int(test_Y[i] - num_known), cand] += 1
+
+        # normalize ground-truth labels: unknown -> -1
+        test_Y_normalized = test_Y.cpu().numpy().copy()
+        for i in range(test_Y_normalized.shape[0]):
+            if test_Y_normalized[i] >= num_known:
+                test_Y_normalized[i] = -1
+        # ---------- REFACTORED ----------
+
+        # tkr, tur, kp, fkr, accuracy = metrics_stage_1(test_Y_normalized, label_hat)
+        
+        results = metrics(test_Y_normalized,
+                                  label_hat,
+                                  num_known=num_known,
+                                  distance_scores=np.min(d, axis=1),
+                                  )
+                
+        tkr = results["TKR"]
+        tur = results["TUR"]
+        kp = results["KP"]
+        fkr = results["FKR"]
+        accuracy = results["ACC"]
+        class_report = results["classification_report"]
+        cm = results["confusion_matrix"]
+        auroc = results["AUROC"]
+        
         supervised_acc = []
         for xi in range(num_known):
-            supervised_acc.append(confusion_matrix[xi][xi] / np.sum(confusion_matrix[xi]))
+            supervised_acc.append(cm[xi][xi] / np.sum(cm[xi]))
         print("supervised accuracy:\n", supervised_acc)
         print("known accuracy:", np.round(accuracy, 4))
         print("mean known accuracy:", np.mean(np.round(accuracy, 4)))
-        print("tkr, tur, kp, fkr:", tkr, tur, kp, fkr)
+        # print("tkr, tur, kp, fkr:", tkr, tur, kp, fkr)
+        print("tkr: {} | tur: {} | kp: {} | AUROC: {}".format(tkr, tur, kp, auroc))
         print("tur mistake:\n", tur_mistake)
+
         np.save('./test_X.npy', test_X.cpu().numpy())
         np.save('./test_Y.npy', test_Y.cpu().numpy())
         np.save('./label_hat.npy', label_hat)
-        np.save('./theta.npy', theta.cpu().numpy())
-        np.save('./centers.npy', class_centers.cpu().numpy())
-        np.save('./dist_matrix.npy', dist_matrix)
+        np.save('./thresholds.npy', thresholds.cpu().numpy()) # per class thresholds
+        np.save('./centers.npy', class_means.cpu().numpy()) # class centers
+        np.save('./dist_matrix.npy', d) # distances (test x classes)
         np.save('./test_X_expand.npy', test_X_expand.cpu().numpy())
 
         # record semantics
         np.save('./semantic/S3R/test_X.npy', test_X.cpu().numpy())
         np.save('./semantic/S3R/test_Y.npy', test_Y.cpu().numpy())
         np.save('./semantic/S3R/test_X_expand.npy', test_X_expand.cpu().numpy())
-
-
-
-
-
