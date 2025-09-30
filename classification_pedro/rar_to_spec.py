@@ -1,3 +1,51 @@
+"""
+rar_to_spec.py
+
+This script extracts audio-related CSV files from a `.rar` archive and converts 
+them into mel spectrograms. Each spectrogram is saved both as a visualization 
+(PNG image) and as raw numerical data (`.npy` format) for later analysis or 
+machine learning applications.
+
+Workflow
+--------
+1. Extracts all files from `input.rar` into an `extracted/` directory.
+2. Recursively scans for `.csv` files inside the extracted folder.
+3. For each CSV:
+   - Loads the signal data (supports single- and multi-column formats).
+   - Attempts to infer the sampling rate if a time column is present.
+   - Generates a mel spectrogram using Librosa with:
+       * n_fft = 1024
+       * hop_length = 256
+       * n_mels = 64
+   - Converts the spectrogram to decibel (dB) scale for visualization.
+   - Saves the spectrogram as:
+       * `.png` → visual spectrogram
+       * `.npy` → raw mel spectrogram matrix
+   - Logs processing time per file.
+
+Outputs
+-------
+- Spectrogram images (`.png`) saved alongside their source CSVs.
+- Spectrogram data (`.npy`) saved alongside their source CSVs.
+
+Dependencies
+------------
+- rarfile
+- numpy
+- librosa
+- matplotlib
+- glob
+- time
+- os
+
+Notes
+-----
+- The script assumes `input.rar` exists in the working directory.
+- Default sample rate is 44.1 kHz unless inferred from a time column.
+- Designed for batch processing of many CSV files at once.
+"""
+
+
 import rarfile
 import os
 import glob
@@ -21,9 +69,9 @@ for i, csv_file in enumerate(csv_files):
     # Read CSV with NO header (skiprows=0 since files have no headers)
     try:
         data = np.loadtxt(csv_file, delimiter=',', skiprows=0)
-        print(f"✅ Read {os.path.basename(csv_file)} (no header detected)")
+        print(f"Read {os.path.basename(csv_file)} (no header detected)")
     except Exception as e:
-        print(f"❌ Failed to read {os.path.basename(csv_file)}: {str(e)}")
+        print(f"Failed to read {os.path.basename(csv_file)}: {str(e)}")
         continue
     
     # Handle data shape
@@ -75,6 +123,6 @@ for i, csv_file in enumerate(csv_files):
     np.save(npy_output_path, S)
     
     elapsed = time.time() - start_time
-    print(f"✓ {os.path.basename(csv_file)} → PNG ({elapsed:.1f}s) | .npy ({elapsed:.1f}s)")
+    print(f"{os.path.basename(csv_file)} → PNG ({elapsed:.1f}s) | .npy ({elapsed:.1f}s)")
 
-print("\n✅ Processing complete! All spectrograms saved as PNG and .npy")
+print("\nProcessing complete! All spectrograms saved as PNG and .npy")

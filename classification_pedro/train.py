@@ -1,3 +1,88 @@
+"""
+drone_classifier.py
+
+This script trains a lightweight convolutional neural network (CNN) to classify 
+drone types and radio controllers based on spectrogram data. It is optimized for 
+low memory usage by using file path generators instead of preloading the dataset.
+
+Dataset Structure
+-----------------
+The dataset directory (`../data` by default) should be organized into subfolders, 
+one per class. Each subfolder is named with its class index (0, 1, 2, ...), and 
+contains spectrograms stored as `.npy` files.
+
+Example:
+    ../data/
+        0/  → Background (WiFi, Bluetooth, etc.)
+        1/  → DJI Phantom 3
+        2/  → DJI Phantom 4 Pro
+        ...
+        23/ → Skydroid
+
+Classes
+-------
+- Background (WiFi/Bluetooth)
+- DJI Phantom / Mavic / Inspire / Matrice / Mini series
+- DJI Avata / Air 2S / DIY
+- RC controllers (VBar, FrSky, Futaba, Taranis, RadioLink, Skydroid)
+
+Workflow
+--------
+1. **Data Loading**
+   - Collects all `.npy` spectrogram paths and assigns labels.
+   - Splits data into training (80%) and testing (20%).
+
+2. **Data Generator**
+   - Loads and processes `.npy` files on the fly.
+   - Handles variable spectrogram shapes, resizes to 256×256, and normalizes to [0,1].
+   - Outputs batches of spectrograms and one-hot encoded labels.
+
+3. **Model Architecture**
+   - Compact CNN with four Conv2D + BatchNorm blocks.
+   - Global average pooling + dense embedding layer (64 units).
+   - Dropout for regularization, softmax output for classification.
+
+4. **Training**
+   - Uses mixed precision for efficiency.
+   - Adam optimizer (lr=3e-4), categorical crossentropy loss.
+   - Tracks accuracy, precision, and recall.
+   - ModelCheckpoint and EarlyStopping callbacks.
+   - Trains for up to 50 epochs.
+
+5. **Saving**
+   - Best model → `best_drone_model.h5`
+   - Final trained model → `final_drone_classifier.h5`
+
+6. **Embedding & Thresholds**
+   - Creates an embedding model (outputs from `embedding_layer`).
+   - Computes per-class centers in embedding space.
+   - Defines detection thresholds (mean + 2*std) per class.
+   - Saves results as `class_centers.npy` and `class_thresholds.npy`.
+
+Outputs
+-------
+- Trained model files (`.h5`)
+- Class embeddings (`class_centers.npy`)
+- Class thresholds (`class_thresholds.npy`)
+
+Dependencies
+------------
+- Python 3.x
+- numpy
+- OpenCV (cv2)
+- TensorFlow / Keras
+- scikit-learn
+- matplotlib
+- gc
+
+Notes
+-----
+- Expects input data as precomputed spectrograms (`.npy` format).
+- The embedding/threshold mechanism enables open-set detection (rejecting 
+  unknown/unseen classes).
+"""
+
+
 import os
 import numpy as np
 import tensorflow as tf
@@ -225,4 +310,4 @@ for class_idx in range(len(CLASSES)):
 # Save class centers and thresholds
 np.save('class_centers.npy', np.array(class_centers))
 np.save('class_thresholds.npy', np.array(class_thresholds))
-print("✅ Class centers and thresholds saved")
+print("Class centers and thresholds saved")

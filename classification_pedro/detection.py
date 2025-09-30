@@ -1,3 +1,46 @@
+"""
+Detects potential drone activity within a spectrogram and saves a visualization 
+with highlighted detection regions.
+
+This function loads a precomputed spectrogram (stored as a NumPy `.npy` file), 
+analyzes energy within a target frequency band (default: 1–5 kHz), and applies 
+a simple thresholding approach to detect potential drone signals. A visualization 
+is generated that includes the original spectrogram and an overlay plot of 
+detected drone activity over time.
+
+Parameters
+----------
+spectrogram_path : str
+    Path to the input spectrogram file in `.npy` format. The spectrogram should 
+    be a 2D NumPy array (frequency bins × time frames).
+output_dir : str, optional
+    Directory where detection visualizations will be saved. Defaults to `'detections'`.
+
+Returns
+-------
+np.ndarray
+    A boolean array indicating time regions where drone activity was detected 
+    (True = detected, False = not detected).
+
+Notes
+-----
+- The sampling rate is assumed to be 44.1 kHz. Adjust `sr` if using different data.
+- The default detection band is 1–5 kHz, which may need tuning depending on 
+    the drone type or recording conditions.
+- The detection threshold is fixed at 0.6 (normalized energy). This value can 
+    be adjusted for sensitivity.
+- The generated plot includes:
+    * Original mel spectrogram
+    * Energy over time with threshold line
+    * Highlighted regions of detected activity
+
+Example
+-------
+>>> detect_drones_in_spectrogram('spectrogram_data.npy', output_dir='results')
+✓ Detection saved to: results/spectrogram_data_detection.png
+array([False, False, True, True, ...])
+"""
+
 import numpy as np
 import librosa
 import matplotlib.pyplot as plt
