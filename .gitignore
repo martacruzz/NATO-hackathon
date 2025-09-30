@@ -17,3 +17,5 @@ Data/
 *.keras
 *.npy
 *.png
+
+/classifier/model
