@@ -1,3 +1,66 @@
+"""
+Outlier and EVT Utilities for Open-Set RF Signal Classification
+===============================================================
+
+This module provides functions for computing class-wise statistics, Mahalanobis 
+distances, distance-based thresholds, and Extreme Value Theory (EVT) modeling 
+for open-set recognition tasks.
+
+Main Components
+---------------
+
+1. **Class Statistics**:
+  - compute_class_stats(train_embeddings, train_labels, ...)
+    Computes per-class means, covariance matrices (regularized), and precision 
+    (inverse covariance) matrices. Supports:
+      - Tikhonov regularization via reg_lambda
+      - Ledoit-Wolf shrinkage (if sklearn available)
+  - Outputs are all numpy arrays (float64) for numerical stability.
+
+2. **Distance Computations**:
+   - batch_mahalanobis_sq(X, class_means, precisions)
+     Computes squared Mahalanobis distances from each sample to each class mean.
+     Vectorized implementation for efficiency.
+
+3. **Per-Class Thresholds**:
+   - per_class_thresholds_percentile(...)
+     Determines per-class distance thresholds by computing the specified percentile 
+     (default 95%) of in-class distances. Returns thresholds in distance domain 
+     (not squared).
+
+4. **EVT (Weibull) Modeling**:
+   - fit_weibull_per_class(...)
+     Fits Weibull distributions to the largest distances (tails) for each class.
+     Useful for modeling the probability of extreme distances (outliers).
+   - weibull_outlier_probability(dists, weibull_models)
+     Converts distances to tail probabilities using fitted Weibull models.
+     Outputs probability that a sample is an outlier relative to each class.
+
+Design Choices
+--------------
+- Mahalanobis distances are computed with class-specific precision matrices 
+  to account for anisotropic covariance.
+- Regularization ensures numerical stability in covariance inversion.
+- EVT is used only in Stage 1 (known vs unknown detection) to refine outlier 
+  probabilities; tail fitting uses the largest `tail_size` distances per class.
+- Numpy arrays are preferred for all computations to avoid GPU/torch dependencies, 
+  except when explicitly passed as torch tensors (converted internally).
+
+Dependencies
+------------
+- Optional: scipy for Weibull fitting and survival functions.
+- Optional: sklearn for Ledoit-Wolf covariance shrinkage.
+
+Usage
+-----
+Typical workflow:
+1. Compute class stats on training embeddings.
+2. Compute Mahalanobis distances for test embeddings.
+3. Obtain per-class thresholds for Stage 1 rejection.
+4. Fit Weibull tails and compute outlier probabilities if EVT is used.
+"""
+
+
 import numpy as np
 
 try:

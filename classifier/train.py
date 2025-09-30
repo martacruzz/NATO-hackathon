@@ -1,3 +1,75 @@
+"""
+Training Script for Open-Set RF Signal Classification
+=====================================================
+
+This script defines and trains a neural network for RF signal classification 
+under the open-set recognition (OSR) setting. It combines convolutional and 
+transformer-based modules to extract semantic embeddings from time-frequency 
+representations of signals, and applies both supervised and contrastive losses 
+to encourage discriminative, compact class clusters.
+
+Main Components
+---------------
+1. **Network Architecture (NET)**:
+   - Multi-scale CNN feature extractors with different receptive fields 
+     (dilated convolutions at dilation rates 1, 3, 5).
+   - Transformer encoder blocks for temporal and frequency modeling (self-attention).
+   - Cross-attention modules to align temporal and frequency features.
+   - Fusion into a semantic embedding space with classification head.
+
+2. **Dataset Loader (MyDataset)**:
+   - Loads preprocessed .npy feature files.
+   - Returns triplets (x, y, z) representing input features, 
+     temporal slices, and frequency slices.
+
+3. **Training Loop**:
+   - Losses:
+     - CrossEntropy loss for classification.
+     - Center and cluster loss (ContLoss) for embedding regularization.
+   - Optimizers:
+     - Separate Adam optimizers for network and contrastive loss parameters.
+   - Schedulers:
+     - StepLR for both optimizers to gradually decay the learning rate.
+   - Logging:
+     - Tracks CE, center, and cluster losses per epoch.
+     - Saves metrics and embeddings periodically.
+
+4. **Open-Set Evaluation (Stage 1)**:
+   - Computes class means and Mahalanobis distance thresholds from embeddings.
+   - Optionally fits Extreme Value Theory (EVT, Weibull models) for tail modeling.
+   - Evaluates samples from known and unknown sets.
+   - Computes metrics: TKR, TUR, KP, FKR, AUROC, classification report, and confusion matrix.
+
+Inputs & Outputs
+----------------
+- **Inputs**:
+  - Text files in ./experiment_groups/ describing training and test samples 
+    (known_for_train, known_for_test, unknown).
+  - Precomputed .npy files with signal features.
+
+- **Outputs**:
+  - Trained model weights in ./model/S3R/.
+  - Loss curves, evaluation metrics, embeddings, predictions, and confusion matrices.
+  - Evaluation logs at specified intervals.
+
+Design Notes
+------------
+- EVT is applied in **Stage 1 testing** for improved open-set detection.
+- Stage 2 clustering of unknowns (if applicable) is handled separately; 
+  this script focuses only on Stage 1.
+- Loss weights are tunable via [eta_1, eta_2, eta_3].
+- Default hyperparameters: semantic_dim=128, margin=8, batch_size=32, lr=1e-4.
+
+Usage
+-----
+Run this script directly to train a model:
+
+    $ python3 train.py
+
+The script will automatically create model and semantic directories if absent.
+"""
+
+
 import torch
 from torch import nn
 import torch.nn.functional as F
@@ -15,24 +87,32 @@ from utils import outlier
 
 def metrics(true_label, predict_label, num_known, distance_scores=None):
     """
-    Extended evaluation metrics for open-set classification.
+    Compute evaluation metrics for open-set classification.
+
+    Metrics include:
+        - TKR (True Known Rate)
+        - TUR (True Unknown Rate)
+        - KP (Known Precision)
+        - FKR (False Known Rate)
+        - AUROC (if distance_scores provided)
+        - Confusion matrix
+        - Per-class classification report (ignores unknowns)
 
     Parameters
     ----------
     true_label : np.ndarray
-        Ground-truth labels (known classes = [0..num_known-1], unknown = -1).
+        Ground-truth labels; known classes in [0..num_known-1], unknown = -1.
     predict_label : np.ndarray
-        Predicted labels (same convention, unknown = -1).
+        Predicted labels; unknown = -1.
     num_known : int
         Number of known classes.
     distance_scores : np.ndarray, optional
-        Confidence / distance scores per sample (lower = more confident).
-        Used for AUROC.
+        Confidence/distance scores used to compute AUROC.
 
     Returns
     -------
     results : dict
-        Dictionary with all metrics.
+        Dictionary containing all computed metrics.
     """
 
     results = {}
@@ -70,6 +150,28 @@ def metrics(true_label, predict_label, num_known, distance_scores=None):
 
 
 def metrics_stage_1(true_label, predict_label):
+    """
+    Legacy function for computation of stage-1 open-set metrics for evaluation.
+
+    Stage-1 metrics:
+        - TKR: proportion of known samples correctly accepted
+        - TUR: proportion of unknown samples correctly rejected
+        - KP: proportion of accepted samples correctly classified
+        - FKR: proportion of rejected samples correctly rejected
+
+    Parameters
+    ----------
+    true_label : np.ndarray
+        Ground-truth labels; unknowns encoded as -1.
+    predict_label : np.ndarray
+        Predicted labels; unknowns encoded as -1.
+
+    Returns
+    -------
+    tkr, tur, kp, fkr : float
+        Stage-1 metrics.
+    """
+    
     num_samples = predict_label.shape[0]
     ones = np.ones(num_samples)
     # TKR:
@@ -102,6 +204,20 @@ def metrics_stage_1(true_label, predict_label):
     return tkr, tur, kp, fkr
 
 def position_coding(x):
+    """
+    Generate sinusoidal positional encodings for transformer input.
+
+    Parameters
+    ----------
+    x : torch.Tensor
+        Input tensor of shape [B, num_token, num_dims].
+
+    Returns
+    -------
+    p : torch.Tensor
+        Positional encodings of same shape as input.
+    """
+
     num_token, num_dims = x.size(-2), x.size(-1)
     p = torch.zeros((1, num_token, num_dims))
     t = torch.arange(num_token, dtype=torch.float32).reshape(-1, 1) / \
@@ -112,6 +228,27 @@ def position_coding(x):
 
 
 class MyDataset(Dataset):
+    """
+    Custom PyTorch Dataset for loading RF signal features.
+
+    Each sample returns:
+        - x: original feature map (1, T, W)
+        - y: time features (T, W)
+        - z: frequency features (W, T)
+        - label: class label
+
+    Parameters
+    ----------
+    path_txt : str
+        Path to text file listing feature files and labels.
+    len_time : int
+        Length of the temporal dimension in units of size.
+    gamma : float
+        Fraction of the signal to use.
+    size : int, optional
+        Width of features (default: 512).
+    """
+
     def __init__(self, path_txt, len_time, gamma, size=512):
         super(MyDataset, self).__init__()
         fh = open(path_txt, 'r')
@@ -144,6 +281,48 @@ class MyDataset(Dataset):
 
 
 class NET(nn.Module):
+    """
+    Neural network for open-set RF signal classification.
+
+    Architecture:
+        - Multi-scale CNN feature extractors (dilations 1,3,5)
+        - Transformer encoder for time (SA_1) and frequency (SA_2) features
+        - Cross-attention modules for fusion between time and frequency
+        - Fully connected layers to semantic embedding
+        - Classification head
+
+    Parameters
+    ----------
+    in_channels : int
+        Number of input channels (e.g., 1 for grayscale features).
+    input_size : list[int]
+        Input feature size [T, W].
+    semantic_dim : int
+        Dimension of the semantic embedding space.
+    num_class : int
+        Number of known classes.
+    device : torch.device
+        Device for tensor operations.
+
+    Forward Inputs
+    --------------
+    x : torch.Tensor
+        Input feature map [B, C, T, W].
+    y : torch.Tensor
+        Temporal features [B, T, W].
+    z : torch.Tensor
+        Frequency features [B, W, T].
+
+    Returns
+    -------
+    predict : torch.Tensor
+        Classification logits [B, num_class].
+    semantic : torch.Tensor
+        Fused semantic embedding [B, semantic_dim].
+    x, y, z, expand_x : torch.Tensor
+        Intermediate feature embeddings for debugging/analysis.
+    """
+
     def __init__(self, in_channels, input_size, semantic_dim, num_class, device):
         super(NET, self).__init__()
         self.input_size = input_size                     # [T, W]
@@ -353,6 +532,48 @@ class NET(nn.Module):
 
 
 def train(net, device, semantic_dims, lr, batch_size, margin, num_known_class, my_index, gamma, len_time, tips):
+    """
+    Train the open-set classification network and evaluate stage-1 metrics.
+
+    Steps:
+        1. Load train/test datasets for known and unknown classes.
+        2. Initialize loss functions, optimizers, and schedulers.
+        3. Iterate over epochs:
+            - Forward pass, compute CE and contrastive losses
+            - Backpropagation and optimizer step
+            - Periodic evaluation:
+                - Compute semantic embeddings
+                - Mahalanobis distance + thresholds
+                - EVT refinement (optional)
+                - Compute open-set metrics
+        4. Save model, embeddings, predictions, and logs.
+
+    Parameters
+    ----------
+    net : NET
+        The neural network to train.
+    device : torch.device
+        Device for computations (CPU/GPU).
+    semantic_dims : int
+        Dimension of semantic embedding.
+    lr : float
+        Learning rate.
+    batch_size : int
+        Batch size for training.
+    margin : float
+        Margin for contrastive loss.
+    num_known_class : int
+        Number of known classes.
+    my_index : int
+        Index for experiment group (used for dataset paths).
+    gamma : float
+        Fraction of the feature to use.
+    len_time : int
+        Temporal length of input features.
+    tips : str
+        Optional note for naming experiment outputs.
+    """
+
     train_data = MyDataset(path_txt='./experiment_groups/' + str(my_index) + '-known_for_train', len_time=len_time, gamma=gamma, size=512)
     test_data_known = MyDataset(path_txt='./experiment_groups/' + str(my_index) + '-known_for_test', len_time=len_time, gamma=gamma, size=512)
     test_data_unknown = MyDataset(path_txt='./experiment_groups/' + str(my_index) + '-unknown', len_time=len_time, gamma=gamma, size=512)
@@ -376,7 +597,7 @@ def train(net, device, semantic_dims, lr, batch_size, margin, num_known_class, m
 
     # ------------------------------START LEARNING---------------------------------#
     max_epoch = 251
-    interval = 50
+    interval = 50 # how often we run evaluation and save metrics
     loss_log = []
     indicator_log = []
     print("START LEARNING !!")

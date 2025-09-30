@@ -1,3 +1,61 @@
+"""
+Open-Set Outlier Parameter Tuning
+=================================
+
+This script performs a grid search over per-class percentile thresholds and 
+EVT (Weibull) cutoff probabilities to optimize open-set detection metrics 
+(stage 1). It evaluates how well known and unknown samples are separated 
+using Mahalanobis distances and optional EVT tail modeling.
+
+Main Components
+---------------
+1. **Feature Extraction**:
+   - Collects semantic embeddings from a trained network (`net`) for:
+     - Training samples (for computing class stats)
+     - Test known samples
+     - Test unknown samples
+
+2. **Class Statistics**:
+   - Computes class means and precision (inverse covariance) matrices.
+   - Regularization is applied for numerical stability.
+
+3. **Grid Search**:
+   - Iterates over combinations of:
+     - Percentiles for distance thresholds (e.g., 90, 95, 99)
+     - EVT cutoff probabilities (e.g., 0.1, 0.3, 0.5)
+   - For each combination, predicts labels for test samples:
+     - Samples exceeding per-class thresholds are labeled unknown (-1)
+     - EVT outlier probability is used for further rejection if available
+
+4. **Evaluation**:
+   - Metrics computed per configuration:
+     - TKR (True Known Rate), TUR (True Unknown Rate)
+     - KP (Known Precision), FKR (False Known Rejection)
+   - Scores are combined to select the best percentile + cutoff pair.
+
+Inputs & Outputs
+----------------
+- **Inputs**:
+  - `net`: trained model to extract embeddings
+  - `train_loader_for_eval`: DataLoader for computing class stats
+  - `test_loader_known` / `test_loader_unknown`: DataLoaders for evaluation
+  - `num_known`: number of known classes
+  - `semantic_dim`: embedding dimension
+  - Optional: lists of percentiles and EVT cutoffs
+
+- **Outputs**:
+  - Prints metrics for all configurations
+  - Returns the best configuration (percentile, EVT cutoff, metrics)
+
+Design Notes
+------------
+- EVT (Weibull tail fitting) is optional; controlled by `SCIPY_AVAILABLE`.
+- Scoring function is flexible; here `(TKR + KP)/2` is used by default.
+- Stage 1 metric tuning ensures robust detection of unknown samples 
+  before Stage 2 clustering.
+"""
+
+
 import numpy as np
 import torch
 from tqdm import tqdm

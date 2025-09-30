@@ -1,3 +1,49 @@
+"""
+UMAP Visualization of Open-Set Embeddings
+=========================================
+
+This script visualizes high-dimensional semantic embeddings in 2D space 
+using UMAP, comparing ground-truth labels with model predictions. It helps 
+to inspect how well known and unknown samples are separated in the learned 
+embedding space.
+
+Main Components
+---------------
+1. **Load Embeddings and Labels**:
+   - `embeddings`: semantic vectors extracted from the trained model.
+   - `labels`: ground-truth labels (-1 indicates unknown samples).
+   - `preds`: predicted labels from the model (-1 = predicted unknown).
+
+2. **Dimensionality Reduction**:
+   - Uses UMAP to reduce embeddings to 2D for visualization.
+   - Preserves local and global structure of high-dimensional data.
+
+3. **Plotting**:
+   - **Ground Truth subplot**:
+     - Known samples colored by class.
+     - Unknown samples marked in red with 'x'.
+   - **Prediction subplot**:
+     - Predicted known samples colored by predicted class.
+     - Predicted unknowns marked in red with 'x'.
+   - Legends and titles included for clarity.
+
+Inputs & Outputs
+----------------
+- **Inputs**:
+  - `.npy` files containing embeddings, ground-truth labels, and predictions.
+- **Outputs**:
+  - 2D scatter plots showing distribution of known vs unknown samples 
+    for both ground-truth and predicted labels.
+
+Design Notes
+------------
+- UMAP is used instead of PCA/t-SNE for better preservation of local clusters.
+- Visual inspection can help diagnose misclassified unknowns and assess 
+  stage-1 open-set separation performance.
+- Colors for known classes are consistent via `tab20` colormap.
+"""
+
+
 import numpy as np
 import matplotlib.pyplot as plt
 import umap.umap_ as umap

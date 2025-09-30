@@ -1,4 +1,12 @@
 """
+Stage-2 Testing Script for Unknown Class Clustering in Open-Set RF Signal Classification
+=======================================================================================
+
+This script performs Stage 2 evaluation of a trained neural network under the 
+open-set recognition (OSR) setting. Its purpose is to analyze the samples 
+rejected in Stage 1 (predicted as unknown) and estimate the number of unknown 
+classes (u) among them, optionally performing clustering to assign pseudo-labels.
+
 Stage 2: Unknown Clustering
 ---------------------------
 
@@ -13,8 +21,55 @@ Design choice:
 
 Summary:
 - If unknowns look compact (u=1), report accuracy + UP.
-- Otherwise, run KMeans (2-14) and pick the best cluster count with DB index.
+- Otherwise, run KMeans (2-14 clusters) and pick the best cluster count 
+  based on Davies-Bouldin index.
+- Computes unknown accuracy and unknown precision (UP) as evaluation metrics.
+
+Main Components
+---------------
+1. **Data Loading**:
+   - Loads Stage 1 embeddings, expanded embeddings, thresholds, class centers, 
+     distance matrices, and Stage 1 predictions.
+
+2. **Unknown Sample Filtering**:
+   - Filters samples predicted as unknown in Stage 1.
+   - Normalizes labels to -1 for unknowns.
+
+3. **Unknown Compactness Test**:
+   - Computes Mahalanobis distances of unknowns to their mean.
+   - Compares 95th percentile distance to the maximum known-class threshold.
+   - If below threshold, treats all unknowns as a single class (u=1).
+
+4. **Clustering of Unknowns (if needed)**:
+   - Scales features using MinMaxScaler.
+   - Runs KMeans for 2-14 clusters.
+   - Uses silhouette score and Davies-Bouldin index to select the optimal cluster count.
+   - Computes a confusion matrix against ground truth unknown classes.
+   - Determines dominant clusters per unknown class.
+   - Calculates unknown accuracy and unknown precision (UP).
+
+Inputs & Outputs
+----------------
+- **Inputs**:
+  - Stage 1 outputs: test embeddings, expanded embeddings, thresholds, class centers, distance matrices, and predictions.
+
+- **Outputs**:
+  - Number of estimated unknown classes (u)
+  - Unknown accuracy (per unknown class)
+  - Unknown precision (UP)
+  - Confusion matrix for clustered unknowns (if clustering performed)
+  - Silhouette scores and Davies-Bouldin indices per cluster count (printed)
+
+Usage
+-----
+Run this script after Stage 1 evaluation:
+
+    $ python3 test_stage_2.py
+
+The script automatically loads Stage 1 outputs, evaluates unknown compactness, 
+performs clustering if needed, and prints Stage 2 evaluation metrics.
 """
+
 
 import numpy as np
 import torch

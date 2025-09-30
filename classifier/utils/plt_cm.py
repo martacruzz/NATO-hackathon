@@ -1,3 +1,55 @@
+"""
+Confusion Matrix Visualization for Open-Set RF Classification
+============================================================
+
+This script loads and visualizes per-class confusion matrices saved during 
+training at different epochs. It is intended for monitoring model performance 
+evolution over time, particularly per-class accuracies.
+
+Main Components
+---------------
+1. **Loading Confusion Matrices**:
+   - Confusion matrices are expected to be saved as `.npy` files in a directory.
+   - File naming convention includes model parameters and epoch number.
+
+2. **Normalization**:
+   - Each row of the confusion matrix is normalized to represent per-class 
+     accuracy (row-sum = 1).
+   - NaNs are replaced with zeros to handle any classes without samples.
+
+3. **Visualization**:
+   - Uses `seaborn.heatmap` for clear visual presentation.
+   - Annotations display normalized accuracy values.
+   - X-axis: predicted class, Y-axis: true class.
+   - Titles indicate epoch number to track evolution over training.
+
+Inputs & Outputs
+----------------
+- **Inputs**:
+  - `.npy` confusion matrices located in `cm_dir`.
+  - List of epochs and class names defined by the user.
+
+- **Outputs**:
+  - Heatmaps displayed via `matplotlib.pyplot.show()`.
+  - Per-class normalized accuracy visualizations at selected epochs.
+
+Design Notes
+------------
+- Useful for detecting class-wise misclassifications, model drift, or 
+  imbalanced performance.
+- Can be extended to save figures or combine multiple epochs into a single 
+  evolution plot.
+
+Usage
+-----
+Run this script directly:
+
+  $ python3 visualize_cm.py
+
+Adjust `model_name`, `cm_dir`, `epochs`, and `class_names` as needed.
+"""
+
+
 import os
 import numpy as np
 import matplotlib.pyplot as plt

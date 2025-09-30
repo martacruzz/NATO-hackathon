@@ -1,3 +1,74 @@
+"""
+Stage-1 Testing Script for Open-Set RF Signal Classification
+===========================================================
+
+This script evaluates a trained neural network for RF signal classification 
+under the open-set recognition (OSR) setting. It performs Stage 1 evaluation, 
+focusing on detecting unknown classes and measuring open-set performance 
+using distance-based and EVT-refined methods.
+
+Main Components
+---------------
+1. **Network Loading (NET)**:
+   - Loads a pretrained NET model.
+   - Configures device (CPU/GPU) and loads model parameters.
+
+2. **Dataset Loader (MyDataset)**:
+   - Loads known training, known testing, and unknown testing datasets.
+   - Returns triplets (x, y, z) representing input features, temporal slices, and frequency slices.
+
+3. **Embedding Computation**:
+   - Computes semantic embeddings for all training samples.
+   - Computes embeddings for test samples (known + unknown).
+
+4. **Class Statistics & Thresholds**:
+   - Computes class means, regularized covariances, and Mahalanobis precision matrices.
+   - Determines per-class percentile thresholds.
+   - Optionally fits Extreme Value Theory (EVT, Weibull models) to class-tail distances for outlier probability modeling.
+
+5. **Stage 1 Evaluation**:
+   - Computes Mahalanobis distances for test samples.
+   - Applies threshold-based and EVT-based criteria to predict unknowns.
+   - Normalizes labels for unknown samples (-1 convention).
+   - Computes open-set metrics:
+     - TKR (True Known Rate)
+     - TUR (True Unknown Rate)
+     - KP (Known Precision)
+     - FKR (False Known Rate)
+     - Per-class accuracy for known classes
+     - AUROC (if distance scores provided)
+     - Confusion matrix and classification report
+
+6. **Results Saving**:
+   - Saves embeddings, predictions, thresholds, class centers, distance matrices, and expanded semantic embeddings in .npy format.
+
+Inputs & Outputs
+----------------
+- **Inputs**:
+  - Text files in ./experiment_groups/ describing known training, known testing, and unknown testing samples.
+  - Pretrained model weights in ./model/S3R/.
+
+- **Outputs**:
+  - Test embeddings, predictions, thresholds, class centers, distance matrices, and expanded semantics in ./ and ./semantic/S3R/.
+  - Stage 1 open-set evaluation metrics printed to console.
+
+Design Notes
+------------
+- EVT refinement is optional and controlled by `use_evt`.
+- Distance thresholding uses per-class percentile cutoff (default 95th percentile).
+- Unknown labels are represented by -1.
+- The script is focused on Stage 1 evaluation; Stage 2 clustering of unknowns is handled separately.
+
+Usage
+-----
+Run this script directly to evaluate a trained model:
+
+    $ python3 test_stage_1.py
+
+The script automatically loads datasets, computes embeddings, performs Stage 1 evaluation, and saves results.
+"""
+
+
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -11,24 +82,33 @@ from utils import outlier
 
 def metrics(true_label, predict_label, num_known, distance_scores=None):
     """
-    Extended evaluation metrics for open-set classification.
+    Compute evaluation metrics for open-set classification (stage 1).
+
+    Computes:
+        - TKR (True Known Rate)
+        - TUR (True Unknown Rate)
+        - KP (Known Precision)
+        - FKR (False Known Rate)
+        - Known-class accuracy per class
+        - Classification report (ignoring unknowns)
+        - Confusion matrix (including unknowns)
+        - AUROC (if distance_scores provided)
 
     Parameters
     ----------
     true_label : np.ndarray
-        Ground-truth labels (known classes = [0..num_known-1], unknown = -1).
+        Ground-truth labels; known classes in [0..num_known-1], unknown = -1.
     predict_label : np.ndarray
-        Predicted labels (same convention, unknown = -1).
+        Predicted labels; unknown = -1.
     num_known : int
         Number of known classes.
     distance_scores : np.ndarray, optional
-        Confidence / distance scores per sample (lower = more confident).
-        Used for AUROC.
+        Confidence or distance scores per sample, used for AUROC computation.
 
     Returns
     -------
     results : dict
-        Dictionary with all metrics.
+        Dictionary containing all computed metrics.
     """
 
     results = {}
@@ -66,6 +146,29 @@ def metrics(true_label, predict_label, num_known, distance_scores=None):
     return results
 
 def metrics_stage_1(true_label, predict_label):
+    """
+    Legacy function for computation of stage-1 open-set metrics.
+
+    Stage-1 metrics include:
+        - TKR: proportion of known samples correctly accepted
+        - TUR: proportion of unknown samples correctly rejected
+        - KP: precision among accepted samples
+        - FKR: proportion of rejected samples correctly rejected
+        - Per-class accuracy for known classes
+
+    Parameters
+    ----------
+    true_label : np.ndarray
+        Ground-truth labels; unknowns = -1.
+    predict_label : np.ndarray
+        Predicted labels; unknowns = -1.
+
+    Returns
+    -------
+    tkr, tur, kp, fkr, accuracy : float, float, float, float, list
+        Metrics as described above.
+    """
+
     num_samples = predict_label.shape[0]
     ones = np.ones(num_samples)
     # TKR:
@@ -109,6 +212,28 @@ def metrics_stage_1(true_label, predict_label):
 
 
 if __name__ == "__main__":
+    """
+    Stage-1 Testing Script for Open-Set RF Classification.
+
+    Steps:
+    1. Load trained NET model and training parameters.
+    2. Load known and unknown train/test datasets using MyDataset.
+    3. Compute semantic embeddings for all training samples.
+    4. Compute per-class statistics:
+    - Class means, regularized covariances, Mahalanobis precisions
+    - Distance thresholds per class (percentile-based)
+    - Fit Weibull EVT models (optional)
+    5. Compute semantic embeddings for test samples (known + unknown).
+    6. Evaluate stage-1 metrics:
+    - Distance-based thresholding
+    - EVT-based outlier refinement
+    - Compute label predictions
+    - Generate metrics: TKR, TUR, KP, FKR, AUROC, confusion matrix, per-class accuracy
+    7. Save results:
+    - Embeddings, predictions, thresholds, class centers, distance matrix, expanded semantics
+    """
+
+
     tips = '(xyz_for_loss_curve)'
     my_index = 1
     semantic_dim = 128
