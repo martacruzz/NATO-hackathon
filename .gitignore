@@ -17,3 +17,6 @@ Data/
 *.keras
 *.npy
 *.png
+
+*/model
+*/__pycache__
