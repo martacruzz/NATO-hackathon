@@ -1,53 +1,45 @@
 """
-manual_labeler.py
-=================
+manual_review.py
 
-A graphical tool for manually labeling spectrogram images for YOLO object detection.
+Manual Review Tool for Low-Confidence Predictions in Drone Detection
 
-This script provides a full-featured Tkinter-based GUI for labeling
-drone RF signal spectrograms. Users can draw bounding boxes, assign
-classes, and save labels in YOLO format. It is designed for 24 classes,
-but can be adapted for other datasets.
+This module provides a Tkinter-based graphical user interface (GUI) application 
+to manually review and correct low-confidence predictions made by an automated 
+drone detection system. It loads only the worst 5% of auto-labeled predictions 
+based on confidence scores, allowing the user to confirm, delete, or correct 
+bounding boxes in spectrogram images. All changes are saved to the original 
+auto-labeled data, and a log of all review actions is maintained for auditing.
 
 Features:
----------
-- Fullscreen or windowed mode for optimal labeling experience.
-- Interactive canvas to draw bounding boxes on spectrogram images.
-- Class selection via buttons or keyboard shortcuts (0-9, A-N).
-- Automatic saving of YOLO labels alongside images.
-- Navigation between files with next/previous buttons and auto-saving.
-- Progress tracking with a progress bar and status messages.
-- Color-coded bounding boxes for better visualization.
-- Custom help window showing keyboard shortcuts and workflow instructions.
-- Maintains a CSV log of labeled files for auditing purposes.
-- Handles conversion between canvas coordinates and original image coordinates.
-- Loads unlabeled `.npy` spectrogram files from a designated folder.
-
-Usage:
-------
-1. Place unlabeled spectrograms in the `../unlabeled_data` directory.
-2. Run the script: `python manual_labeler.py`
-3. Use the GUI to:
-   - Select a class.
-   - Click and drag to draw bounding boxes.
-   - Save labels (automatically saved on navigation as well).
-   - Navigate to the next or previous spectrogram.
-4. Labels are saved in YOLO `.txt` format next to corresponding images.
+- Fullscreen and windowed mode toggle
+- Display of spectrogram images with current predictions
+- Drawing and editing bounding boxes using mouse
+- Class selection via buttons or keyboard shortcuts (0-9, A-N)
+- Action buttons for Confirm, Delete, Correct Class, Next, Previous, Help, Quit
+- Automatic loading of the lowest-confidence predictions
+- Progress tracking and display of average confidence scores
+- Audit logging of all actions with timestamps and confidence data
+- Help window detailing workflow, keyboard shortcuts, and mouse controls
 
 Dependencies:
--------------
-- Python 3.x
-- Tkinter
-- PIL / Pillow
-- OpenCV
-- NumPy
-- Matplotlib
+- os, csv, time
+- numpy
+- tkinter (Tk, ttk, messagebox, filedialog)
+- PIL (Pillow: Image, ImageTk, ImageDraw)
+- matplotlib (cm, pyplot)
+- cv2 (OpenCV)
 
-File Organization:
-------------------
-- `../unlabeled_data/` : Folder containing `.npy` spectrograms to label.
-- `../labeled_data/`   : Folder where labeled images and YOLO labels are saved.
-- `labeling_log.csv`   : CSV file logging labeled bounding boxes for audit purposes.
+Usage:
+    python manual_review.py
+
+Workflow:
+1. Review the current prediction and confidence scores.
+2. Select the correct class if necessary.
+3. Use Confirm (C) if the prediction is correct.
+4. Use Delete (D) if the bounding box is incorrect or a false positive.
+5. Use Correct Class (K) to assign the right class to a bounding box.
+6. Navigate between files using Next (N) and Previous (P) buttons.
+7. All changes are automatically saved, and an audit log is maintained.
 """
 
 
@@ -62,10 +54,10 @@ import csv
 import time
 import matplotlib.pyplot as plt
 
-class SpectrogramYOLOLabeler:
+class ManualReviewApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Drone RF Signal YOLO Labeler")
+        self.root.title("Manual Review: Low-Confidence Predictions")
         
         # Start in fullscreen mode
         self.root.attributes('-fullscreen', True)
@@ -90,7 +82,7 @@ class SpectrogramYOLOLabeler:
         
         title_label = ttk.Label(
             header_frame, 
-            text="Drone RF Signal YOLO Labeler", 
+            text="Manual Review: Low-Confidence Predictions", 
             font=("Arial", 20, "bold"),
             foreground="#ecf0f1",
             style="Header.TLabel"
@@ -112,9 +104,9 @@ class SpectrogramYOLOLabeler:
         )
         self.fullscreen_btn.pack(side=tk.RIGHT, padx=5)
         
-        # Status bar
+        # Status bar - shows confidence metrics
         self.status_var = tk.StringVar()
-        self.status_var.set("Ready to label")
+        self.status_var.set("Ready to review")
         status_label = ttk.Label(
             self.main_frame, 
             textvariable=self.status_var, 
@@ -124,7 +116,7 @@ class SpectrogramYOLOLabeler:
         )
         status_label.pack(pady=(0, 5))
         
-        # Progress bar
+        # Progress bar - shows review progress
         self.progress_var = tk.DoubleVar()
         self.progress_bar = ttk.Progressbar(
             self.main_frame, 
@@ -145,7 +137,7 @@ class SpectrogramYOLOLabeler:
         
         image_title = ttk.Label(
             image_container, 
-            text="Current Spectrogram - Click and drag to draw bounding boxes", 
+            text="Current Spectrogram - Confidence: [N/A]", 
             font=("Arial", 12, "bold"),
             foreground="#ecf0f1",
             style="ImageTitle.TLabel"
@@ -224,19 +216,12 @@ class SpectrogramYOLOLabeler:
             var = tk.BooleanVar(value=(i == 0))
             
             # Create button text that shows as much as possible
-            # Show the full name with smart line breaks
             if len(class_name) > 25:
-                # Find a good break point
                 words = class_name.split()
                 if len(words) >= 2:
-                    # Try to break after first word if it makes sense
                     first_part = words[0]
                     remaining = ' '.join(words[1:])
-                    if len(first_part) > 5 and len(remaining) > 5:
-                        compact_text = f"{i}: {first_part}\n{remaining}\n[{shortcut}]"
-                    else:
-                        # Just truncate with ellipsis
-                        compact_text = f"{i}: {class_name[:30]}...\n[{shortcut}]"
+                    compact_text = f"{i}: {first_part}\n{remaining}\n[{shortcut}]"
                 else:
                     compact_text = f"{i}: {class_name[:30]}...\n[{shortcut}]"
             else:
@@ -245,8 +230,8 @@ class SpectrogramYOLOLabeler:
             btn = tk.Button(
                 class_grid_frame, 
                 text=compact_text,
-                wraplength=180,  # Much wider to show more text
-                justify=tk.LEFT,  # Left justify for better readability
+                wraplength=180,
+                justify=tk.LEFT,
                 height=2,
                 font=("Arial", 8, "bold"),
                 bg="#3498db",
@@ -258,7 +243,7 @@ class SpectrogramYOLOLabeler:
                 cursor="hand2",
                 command=lambda i=i: self.set_class(i)
             )
-            row = i // 3  # 3 columns
+            row = i // 3
             col = i % 3
             btn.grid(row=row, column=col, padx=1, pady=1, sticky="nsew")
             self.class_buttons.append(btn)
@@ -292,46 +277,46 @@ class SpectrogramYOLOLabeler:
         }
         
         # Row 1
-        self.load_btn = tk.Button(
+        self.confirm_btn = tk.Button(
             actions_grid, 
-            text="Load", 
-            bg="#3498db",
-            fg="white",
-            activebackground="#2980b9",
-            **button_style,
-            command=self.load_spectrogram
-        )
-        self.load_btn.grid(row=0, column=0, padx=2, pady=2, sticky="nsew")
-        
-        self.save_btn = tk.Button(
-            actions_grid, 
-            text="Save (S)", 
+            text="Confirm (C)", 
             bg="#2ecc71",
             fg="white",
             activebackground="#27ae60",
             **button_style,
-            command=self.save_labels
+            command=self.confirm_prediction
         )
-        self.save_btn.grid(row=0, column=1, padx=2, pady=2, sticky="nsew")
+        self.confirm_btn.grid(row=0, column=0, padx=2, pady=2, sticky="nsew")
         
-        self.clear_btn = tk.Button(
+        self.delete_btn = tk.Button(
             actions_grid, 
-            text="Clear (C)", 
+            text="Delete (D)", 
             bg="#e74c3c",
             fg="white",
             activebackground="#c0392b",
             **button_style,
-            command=self.clear_bboxes
+            command=self.delete_current_bbox
         )
-        self.clear_btn.grid(row=0, column=2, padx=2, pady=2, sticky="nsew")
+        self.delete_btn.grid(row=0, column=1, padx=2, pady=2, sticky="nsew")
+        
+        self.correct_btn = tk.Button(
+            actions_grid, 
+            text="Correct Class (K)", 
+            bg="#f39c12",
+            fg="white",
+            activebackground="#d35400",
+            **button_style,
+            command=self.correct_class
+        )
+        self.correct_btn.grid(row=0, column=2, padx=2, pady=2, sticky="nsew")
         
         # Row 2
         self.next_btn = tk.Button(
             actions_grid, 
             text="Next (N)", 
-            bg="#f39c12",
+            bg="#9b59b6",
             fg="white",
-            activebackground="#d35400",
+            activebackground="#8e44ad",
             **button_style,
             command=self.next_file
         )
@@ -340,9 +325,9 @@ class SpectrogramYOLOLabeler:
         self.prev_btn = tk.Button(
             actions_grid, 
             text="Prev (P)", 
-            bg="#9b59b6",
+            bg="#1abc9c",
             fg="white",
-            activebackground="#8e44ad",
+            activebackground="#16a085",
             **button_style,
             command=self.prev_file
         )
@@ -351,9 +336,9 @@ class SpectrogramYOLOLabeler:
         self.help_btn = tk.Button(
             actions_grid, 
             text="Help (H)", 
-            bg="#1abc9c",
+            bg="#3498db",
             fg="white",
-            activebackground="#16a085",
+            activebackground="#2980b9",
             **button_style,
             command=self.show_help
         )
@@ -377,7 +362,7 @@ class SpectrogramYOLOLabeler:
         
         bboxes_title = ttk.Label(
             bboxes_frame, 
-            text="Current Bounding Boxes:", 
+            text="Current Bounding Boxes (Confidence Scores):", 
             font=("Arial", 11, "bold"),
             foreground="#ecf0f1",
             style="ButtonsTitle.TLabel"
@@ -409,10 +394,12 @@ class SpectrogramYOLOLabeler:
             self.root.bind(key.lower(), lambda e, idx=i: self.set_class(idx))
         
         # Special key bindings
-        self.root.bind('<s>', lambda e: self.save_labels())
-        self.root.bind('<S>', lambda e: self.save_labels())
-        self.root.bind('<c>', lambda e: self.clear_bboxes())
-        self.root.bind('<C>', lambda e: self.clear_bboxes())
+        self.root.bind('<c>', lambda e: self.confirm_prediction())
+        self.root.bind('<C>', lambda e: self.confirm_prediction())
+        self.root.bind('<d>', lambda e: self.delete_current_bbox())
+        self.root.bind('<D>', lambda e: self.delete_current_bbox())
+        self.root.bind('<k>', lambda e: self.correct_class())
+        self.root.bind('<K>', lambda e: self.correct_class())
         self.root.bind('<n>', lambda e: self.next_file())
         self.root.bind('<N>', lambda e: self.next_file())
         self.root.bind('<p>', lambda e: self.prev_file())
@@ -429,11 +416,10 @@ class SpectrogramYOLOLabeler:
         self.start_x = None
         self.start_y = None
         self.current_bbox = None
-        self.bboxes = []  # Store bounding boxes as (class_id, x_min, y_min, x_max, y_max)
+        self.bboxes = []  # Store bounding boxes as (class_id, confidence, x_min, y_min, x_max, y_max)
         self.current_image_id = None
         self.current_pil_image = None
         self.current_file_path = None
-        # Store display information for coordinate conversion
         self.display_info = {
             'canvas_width': 0,
             'canvas_height': 0,
@@ -449,21 +435,24 @@ class SpectrogramYOLOLabeler:
         
         # Initialize variables
         self.current_index = 0
-        self.unlabeled_files = []
-        self.log_file = os.path.join("../labeled_data", "labeling_log.csv")
+        self.review_files = []
+        self.log_file = os.path.join("../labeled_data", "manual_review_log.csv")
         
         # Create directories
         os.makedirs("../labeled_data", exist_ok=True)
-        os.makedirs("../unlabeled_data", exist_ok=True)
+        os.makedirs("../auto_labeled_data", exist_ok=True)
         
         # Setup audit log
         if not os.path.exists(self.log_file):
             with open(self.log_file, 'w', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow(["timestamp", "file_path", "class_index", "class_name", "x_min", "y_min", "x_max", "y_max"])
+                writer.writerow([
+                    "timestamp", "file_path", "original_class", "original_confidence", 
+                    "reviewed_class", "reviewed_confidence", "action"
+                ])
         
-        # Load unlabeled files
-        self.load_unlabeled_files()
+        # Load review files (worst 5% by confidence)
+        self.load_review_files()
         
         # Update layout based on screen size
         self.update_layout()
@@ -606,19 +595,20 @@ class SpectrogramYOLOLabeler:
             return x, y
     
     def _update_bboxes_text(self):
-        """Update the bounding boxes text display"""
+        """Update the bounding boxes text display with confidence scores"""
         self.bboxes_text.delete(1.0, tk.END)
         if not self.bboxes:
             self.bboxes_text.insert(tk.END, "No bounding boxes added yet.\n\nClick and drag on the image to add bounding boxes.")
             return
             
-        for i, (class_id, x_min, y_min, x_max, y_max) in enumerate(self.bboxes):
+        for i, (class_id, confidence, x_min, y_min, x_max, y_max) in enumerate(self.bboxes):
             class_name = self.CLASSES[class_id]
             # Convert to original coordinates for display
             orig_x_min, orig_y_min = self._canvas_to_original_coords(x_min, y_min)
             orig_x_max, orig_y_max = self._canvas_to_original_coords(x_max, y_max)
             
             self.bboxes_text.insert(tk.END, f"Box {i+1}: {class_name}\n")
+            self.bboxes_text.insert(tk.END, f"  Confidence: {confidence:.4f}\n")
             self.bboxes_text.insert(tk.END, f"  Canvas: ({x_min:.0f}, {y_min:.0f}) to ({x_max:.0f}, {y_max:.0f})\n")
             self.bboxes_text.insert(tk.END, f"  Original: ({orig_x_min:.0f}, {orig_y_min:.0f}) to ({orig_x_max:.0f}, {orig_y_max:.0f})\n")
             self.bboxes_text.insert(tk.END, f"  Size: {orig_x_max-orig_x_min:.0f} x {orig_y_max-orig_y_min:.0f} pixels\n\n")
@@ -652,50 +642,68 @@ class SpectrogramYOLOLabeler:
                 self.class_buttons[i].config(bg="#3498db", activebackground="#2980b9")  # Default color
         self.status_var.set(f"Selected class: {class_idx} - {self.CLASSES[class_idx]}")
     
-    def load_unlabeled_files(self):
-        self.unlabeled_files = []
-        for root, _, files in os.walk("../unlabeled_data"):
+    def load_review_files(self):
+        """Load only the worst 5% of files based on confidence scores"""
+        review_files = []
+        
+        # Scan all auto-labeled files
+        for root, _, files in os.walk("../auto_labeled_data"):
             for file in files:
-                if file.endswith('.npy'):
-                    self.unlabeled_files.append(os.path.join(root, file))
-        self.status_var.set(f"Found {len(self.unlabeled_files)} unlabeled files")
+                if file.endswith('.txt'):
+                    txt_path = os.path.join(root, file)
+                    base_name = os.path.splitext(file)[0]
+                    npy_path = os.path.join("../unlabeled_data", f"{base_name}.npy")
+                    
+                    # Skip if corresponding .npy doesn't exist
+                    if not os.path.exists(npy_path):
+                        continue
+                    
+                    # Read confidence scores
+                    confidences = []
+                    with open(txt_path, 'r') as f:
+                        for line in f:
+                            parts = line.strip().split()
+                            if len(parts) >= 6:
+                                conf = float(parts[1])
+                                confidences.append(conf)
+                    
+                    if confidences:
+                        min_conf = min(confidences)
+                        review_files.append((npy_path, txt_path, min_conf))
+        
+        # Sort by confidence (lowest first)
+        review_files.sort(key=lambda x: x[2])
+        
+        # Take worst 5%
+        total_files = len(review_files)
+        worst_count = int(0.05 * total_files)
+        self.review_files = review_files[:worst_count]
+        
+        self.status_var.set(f"Loaded {len(self.review_files)} files for review (worst 5%)")
         self.update_progress()
     
     def update_progress(self):
-        if len(self.unlabeled_files) > 0:
-            progress = (self.current_index / len(self.unlabeled_files)) * 100
+        if len(self.review_files) > 0:
+            progress = (self.current_index / len(self.review_files)) * 100
             self.progress_var.set(min(progress, 100))
-            filename = os.path.basename(self.unlabeled_files[self.current_index])
-            self.status_var.set(f"File {self.current_index+1} of {len(self.unlabeled_files)}: {filename}")
+            filename = os.path.basename(self.review_files[self.current_index][0])
+            self.status_var.set(f"File {self.current_index+1} of {len(self.review_files)}: {filename}")
         else:
             self.progress_var.set(0)
-            self.status_var.set("No files to label")
-    
-    def load_spectrogram(self):
-        file_path = filedialog.askopenfilename(
-            title="Select Spectrogram File",
-            filetypes=[("Numpy files", "*.npy"), ("All files", "*.*")]
-        )
-        if not file_path:
-            return
-            
-        self.current_file_path = file_path
-        if file_path in self.unlabeled_files:
-            self.current_index = self.unlabeled_files.index(file_path)
-        self.display_file(self.current_index)
+            self.status_var.set("No files to review")
     
     def display_file(self, index):
-        if index >= len(self.unlabeled_files):
-            self.status_var.set("All files labeled!")
-            messagebox.showinfo("Complete", "All files have been labeled!")
+        if index >= len(self.review_files):
+            self.status_var.set("All files reviewed!")
+            messagebox.showinfo("Complete", "All files have been reviewed!")
             return
             
-        file_path = self.unlabeled_files[index]
-        self.current_file_path = file_path
+        npy_path, txt_path, min_conf = self.review_files[index]
+        self.current_file_path = npy_path
         
         try:
             # Load and preprocess spectrogram
-            spec = np.load(file_path)
+            spec = np.load(npy_path)
             spec = cv2.resize(spec.astype(np.float32), (256, 256))
             spec = (spec - np.min(spec)) / (np.max(spec) - np.min(spec) + 1e-8)
             
@@ -709,18 +717,18 @@ class SpectrogramYOLOLabeler:
             self.current_pil_image = img
             self.bboxes = []
             
-            # Load existing labels if they exist
-            label_path = os.path.splitext(file_path)[0] + ".txt"
-            if os.path.exists(label_path):
-                with open(label_path, 'r') as f:
+            # Load existing labels with confidence scores
+            if os.path.exists(txt_path):
+                with open(txt_path, 'r') as f:
                     for line in f:
                         parts = line.strip().split()
-                        if len(parts) >= 5:
+                        if len(parts) >= 6:
                             class_id = int(parts[0])
-                            x_center = float(parts[1])
-                            y_center = float(parts[2])
-                            width = float(parts[3])
-                            height = float(parts[4])
+                            confidence = float(parts[1])
+                            x_center = float(parts[2])
+                            y_center = float(parts[3])
+                            width = float(parts[4])
+                            height = float(parts[5])
                             
                             # Convert YOLO format to original image coordinates
                             img_width, img_height = img.size
@@ -733,19 +741,27 @@ class SpectrogramYOLOLabeler:
                             canvas_x_min, canvas_y_min = self._original_to_canvas_coords(orig_x_min, orig_y_min)
                             canvas_x_max, canvas_y_max = self._original_to_canvas_coords(orig_x_max, orig_y_max)
                             
-                            self.bboxes.append((class_id, canvas_x_min, canvas_y_min, canvas_x_max, canvas_y_max))
+                            self.bboxes.append((class_id, confidence, canvas_x_min, canvas_y_min, canvas_x_max, canvas_y_max))
+            
+            # Update status with confidence info
+            if self.bboxes:
+                confidences = [b[1] for b in self.bboxes]
+                avg_conf = sum(confidences) / len(confidences)
+                self.status_var.set(f"File {self.current_index+1} of {len(self.review_files)}: {os.path.basename(npy_path)} | Avg Confidence: {avg_conf:.4f}")
+            else:
+                self.status_var.set(f"File {self.current_index+1} of {len(self.review_files)}: {os.path.basename(npy_path)} | No predictions found")
             
             # Update the image display with a small delay to ensure UI is ready
             self.root.after(50, self.update_image_display)
             
-            # Update status
+            # Update progress
             self.update_progress()
         except Exception as e:
             self.status_var.set(f"Error loading file: {str(e)}")
-            messagebox.showerror("Error", f"Could not load file: {file_path}\nError: {str(e)}")
+            messagebox.showerror("Error", f"Could not load file: {npy_path}\nError: {str(e)}")
             # Skip problematic file
             self.current_index += 1
-            if self.current_index < len(self.unlabeled_files):
+            if self.current_index < len(self.review_files):
                 self.root.after(100, lambda: self.display_file(self.current_index))
     
     def start_drawing(self, event):
@@ -784,7 +800,7 @@ class SpectrogramYOLOLabeler:
                 break
         
         if class_id is not None:
-            self.bboxes.append((class_id, x_min, y_min, x_max, y_max))
+            self.bboxes.append((class_id, 1.0, x_min, y_min, x_max, y_max))
             self._draw_bboxes()
             self._update_bboxes_text()
     
@@ -796,7 +812,7 @@ class SpectrogramYOLOLabeler:
         self.image_canvas.delete("bbox")
         
         # Draw new bounding boxes (already in canvas coordinates)
-        for class_id, x_min, y_min, x_max, y_max in self.bboxes:
+        for class_id, confidence, x_min, y_min, x_max, y_max in self.bboxes:
             color = self._get_class_color(class_id)
             self.image_canvas.create_rectangle(
                 x_min, y_min, x_max, y_max,
@@ -805,7 +821,7 @@ class SpectrogramYOLOLabeler:
             )
             self.image_canvas.create_text(
                 x_min + 5, y_min + 5,
-                text=str(class_id),
+                text=f"{class_id}\n{confidence:.2f}",
                 fill=color,
                 anchor=tk.NW,
                 tags="bbox"
@@ -822,19 +838,49 @@ class SpectrogramYOLOLabeler:
         ]
         return colors[class_id % len(colors)]
     
-    def save_labels(self):
-        if self.current_pil_image is None:
-            messagebox.showwarning("Warning", "No image to save")
+    def confirm_prediction(self):
+        """Mark as correct and move to next file"""
+        self.save_review()
+        self.next_file()
+    
+    def delete_current_bbox(self):
+        """Delete the currently selected bounding box"""
+        # In this simple version, we'll delete the last added box
+        if self.bboxes:
+            self.bboxes.pop()
+            self._draw_bboxes()
+            self._update_bboxes_text()
+            self.status_var.set("Deleted last bounding box")
+    
+    def correct_class(self):
+        """Correct the class of the current selected bounding box"""
+        # In this simple version, we'll correct the last added box
+        if self.bboxes:
+            class_id = None
+            for i, var in enumerate(self.class_vars):
+                if var.get():
+                    class_id = i
+                    break
+            
+            if class_id is not None:
+                # Update the last added box's class
+                self.bboxes[-1] = (class_id, self.bboxes[-1][1], self.bboxes[-1][2], self.bboxes[-1][3], self.bboxes[-1][4], self.bboxes[-1][5])
+                self._draw_bboxes()
+                self._update_bboxes_text()
+                self.status_var.set(f"Corrected class to: {class_id} - {self.CLASSES[class_id]}")
+    
+    def save_review(self):
+        """Save review actions to audit log"""
+        if self.current_file_path is None or not self.bboxes:
             return
             
-        # Save image
-        img_path = os.path.splitext(self.current_file_path)[0] + ".png"
-        self.current_pil_image.save(img_path)
+        npy_path = self.current_file_path
+        base_name = os.path.splitext(os.path.basename(npy_path))[0]
+        txt_path = os.path.join("../auto_labeled_data", f"{base_name}.txt")
         
-        # Save YOLO labels
-        label_path = os.path.splitext(self.current_file_path)[0] + ".txt"
-        with open(label_path, 'w') as f:
-            for class_id, x_min, y_min, x_max, y_max in self.bboxes:
+        # Save updated labels
+        with open(txt_path, 'w') as f:
+            for class_id, confidence, x_min, y_min, x_max, y_max in self.bboxes:
                 # Convert canvas coordinates to original image coordinates
                 orig_x_min, orig_y_min = self._canvas_to_original_coords(x_min, y_min)
                 orig_x_max, orig_y_max = self._canvas_to_original_coords(x_max, y_max)
@@ -853,46 +899,49 @@ class SpectrogramYOLOLabeler:
                 width = max(0.0, min(1.0, width))
                 height = max(0.0, min(1.0, height))
                 
-                f.write(f"{class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n")
+                f.write(f"{class_id} {confidence:.6f} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n")
         
-        # Log decision
+        # Log action
         with open(self.log_file, 'a', newline='') as f:
             writer = csv.writer(f)
-            for class_id, x_min, y_min, x_max, y_max in self.bboxes:
+            for class_id, confidence, x_min, y_min, x_max, y_max in self.bboxes:
                 # Convert to original coordinates for logging
                 orig_x_min, orig_y_min = self._canvas_to_original_coords(x_min, y_min)
                 orig_x_max, orig_y_max = self._canvas_to_original_coords(x_max, y_max)
                 
+                # Get original values from the file
+                original_class = None
+                original_confidence = None
+                if os.path.exists(txt_path):
+                    with open(txt_path, 'r') as orig_f:
+                        for line in orig_f:
+                            parts = line.strip().split()
+                            if len(parts) >= 6:
+                                original_class = int(parts[0])
+                                original_confidence = float(parts[1])
+                                break
+                
                 writer.writerow([
                     time.strftime("%Y-%m-%d %H:%M:%S"),
-                    self.current_file_path,
+                    npy_path,
+                    original_class if original_class is not None else -1,
+                    original_confidence if original_confidence is not None else 0.0,
                     class_id,
-                    self.CLASSES[class_id],
-                    orig_x_min,
-                    orig_y_min,
-                    orig_x_max,
-                    orig_y_max
+                    confidence,
+                    "corrected" if original_class != class_id else "confirmed"
                 ])
-        
-        self.status_var.set(f"Labels saved to {label_path}")
-    
-    def clear_bboxes(self):
-        self.bboxes = []
-        self._draw_bboxes()
-        self._update_bboxes_text()
-        self.status_var.set("All bounding boxes cleared")
     
     def next_file(self):
-        self.save_labels()
-        if self.current_index < len(self.unlabeled_files) - 1:
+        self.save_review()
+        if self.current_index < len(self.review_files) - 1:
             self.current_index += 1
             self.display_file(self.current_index)
         else:
-            self.status_var.set("All files labeled!")
-            messagebox.showinfo("Complete", "All files have been labeled!")
+            self.status_var.set("All files reviewed!")
+            messagebox.showinfo("Complete", "All files have been reviewed!")
     
     def prev_file(self):
-        self.save_labels()
+        self.save_review()
         if self.current_index > 0:
             self.current_index -= 1
             self.display_file(self.current_index)
@@ -902,7 +951,7 @@ class SpectrogramYOLOLabeler:
     def show_help(self):
         """Show a custom help window with proper width"""
         help_window = tk.Toplevel(self.root)
-        help_window.title("Keyboard Shortcuts")
+        help_window.title("Manual Review Help")
         help_window.geometry("1000x1000")  # Wider window
         help_window.configure(bg="#2c3e50")
         help_window.resizable(True, True)
@@ -912,33 +961,42 @@ class SpectrogramYOLOLabeler:
         help_window.grab_set()
         
         # Help text with better formatting
-        help_text = """KEYBOARD SHORTCUTS:
+        help_text = """MANUAL REVIEW TOOL HELP:
+
+WHAT THIS TOOL DOES:
+- Reviews only the worst 5% of auto-labeled predictions by confidence
+- Allows you to confirm, correct, or delete bounding boxes
+- Saves all changes to the original auto-labeled data
+
+KEYBOARD SHORTCUTS:
 
 CLASS SELECTION:
 0-9: Classes 0-9
 A-N: Classes 10-23
 
 ACTIONS:
-S: Save Labels for current file
-C: Clear all bounding boxes
-N: Next file (saves current labels first)
-P: Previous file (saves current labels first)
+C: Confirm prediction (move to next file)
+D: Delete current bounding box
+K: Correct class (use class selection first)
+N: Next file (saves current changes)
+P: Previous file (saves current changes)
 H: Show this help window
 F11: Toggle Fullscreen mode
 Esc: Exit Fullscreen or Quit application
 Q: Quit application
 
 MOUSE CONTROLS:
-• Click and drag on the spectrogram to draw bounding boxes
+• Click and drag on the spectrogram to add new bounding boxes
 • Make sure to select a class first before drawing
 • The selected class will be highlighted in red
 
 WORKFLOW:
-1. Select a class from the right panel or use keyboard shortcuts
-2. Click and drag on the spectrogram to draw bounding boxes
-3. Use Save (S) to save labels, or they auto-save when navigating
-4. Use Next (N) and Previous (P) to navigate between files
-5. All labels are saved in YOLO format alongside the spectrograms"""
+1. Review the current prediction (shows confidence scores)
+2. Use Confirm (C) if the prediction is correct
+3. Use Delete (D) if the bounding box is a false positive
+4. Use Correct Class (K) if the class is wrong (select new class first)
+5. Navigate between files with Next (N) and Previous (P)
+6. All changes are automatically saved to the original data"""
         
         # Create a text widget with scrollbar for the help
         text_frame = ttk.Frame(help_window, style="Main.TFrame")
@@ -982,19 +1040,19 @@ WORKFLOW:
         help_text_widget.focus_set()
     
     def quit_app(self):
-        self.save_labels()
+        self.save_review()
         if messagebox.askyesno("Confirm Quit", "Are you sure you want to quit?"):
             self.root.destroy()
     
     def initialize_display(self):
         """Initialize the display after the UI is fully rendered"""
-        if self.unlabeled_files:
+        if self.review_files:
             self.display_file(0)
         else:
-            self.status_var.set("No unlabeled files found in ../unlabeled_data")
-            messagebox.showinfo("Information", "No unlabeled files found in ../unlabeled_data")
+            self.status_var.set("No files to review")
+            messagebox.showinfo("Information", "No files to review")
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = SpectrogramYOLOLabeler(root)
+    app = ManualReviewApp(root)
     root.mainloop()

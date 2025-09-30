@@ -1,3 +1,26 @@
+# drone_data.yaml
+# =================
+#
+# YOLO dataset configuration file for drone detection.
+#
+# Defines the dataset paths, number of classes, and class names.
+#
+# Fields:
+# -------
+# train: Path to training images (YOLO expects images and labels in parallel directories)
+# val: Path to validation images
+# test: Path to test images (optional; used if performing testing separately)
+# nc: Number of classes
+# names: List of class names in order corresponding to class indices (0 to nc-1)
+#
+# Usage:
+# ------
+# This file is passed to the YOLO training script (e.g., train_yolo.py):
+#     model.train(data='drone_data.yaml', ...)
+#
+# The YAML ensures YOLO knows where to find images, labels, and how to map class indices to names.
+
+
 # Data configuration file
 
 train: ../yolo_dataset/images/train
