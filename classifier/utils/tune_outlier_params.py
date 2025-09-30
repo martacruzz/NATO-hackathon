@@ -55,10 +55,14 @@ Design Notes
   before Stage 2 clustering.
 """
 
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import numpy as np
 import torch
 from tqdm import tqdm
+
 from outlier import (
     compute_class_stats,
     per_class_thresholds_percentile,
@@ -67,6 +71,7 @@ from outlier import (
     weibull_outlier_probability,
     SCIPY_AVAILABLE
 )
+
 from train import metrics_stage_1
 
 def tune_outlier_params(
