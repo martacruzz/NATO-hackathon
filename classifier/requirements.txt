@@ -5,6 +5,5 @@ h5py
 matplotlib
 scipy
 scikit-learn
-metrics
 umap
 seaborn

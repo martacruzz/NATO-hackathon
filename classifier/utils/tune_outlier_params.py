@@ -67,7 +67,7 @@ from outlier import (
     weibull_outlier_probability,
     SCIPY_AVAILABLE
 )
-from metrics import metrics_stage_1
+from train import metrics_stage_1
 
 def tune_outlier_params(
     net, device,
