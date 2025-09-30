@@ -3,6 +3,89 @@
 # Also, since this is a newer and fully tested version, 
 # it may have better results than normal training
 
+"""
+train_speed.py
+
+This script trains a convolutional neural network (CNN) for drone and radio 
+controller classification, similar to `train.py`, but optimized to use all 
+available system resources (CPU, GPU, and RAM) for maximum speed. It is 
+resource-intensive and best suited for machines with ample memory and GPU 
+support.
+
+Key Differences from train.py
+-----------------------------
+- Dynamically detects system resources (RAM, CPU cores).
+- Automatically adjusts TensorFlow threading and batch size for efficiency.
+- Enables GPU acceleration (with memory growth) if available.
+- Larger batch sizes than `train.py` → faster training at the cost of higher memory use.
+
+Workflow
+--------
+1. **Resource Detection**
+   - Uses `psutil` to check available RAM and CPU cores.
+   - Reserves ~70% of available RAM for batch processing.
+   - Determines a safe batch size (min 16, max 64).
+
+2. **Data Loading**
+   - Loads `.npy` spectrograms from dataset directory (`../data`).
+   - Each class is stored in a numbered subdirectory (0, 1, 2, ...).
+   - Splits dataset into 80% training, 20% testing.
+
+3. **Data Generator**
+   - Loads and preprocesses `.npy` files on the fly.
+   - Handles variable input shapes, resizes to 256×256, normalizes to [0,1].
+   - Outputs spectrogram batches and one-hot encoded labels.
+
+4. **Model Architecture**
+   - Lightweight CNN with four Conv2D + BatchNorm blocks.
+   - Global average pooling + dense embedding layer (64 units).
+   - Dropout regularization, softmax output for classification.
+   - Mixed precision training enabled for speed.
+
+5. **Training**
+   - Compiled with Adam (lr=3e-4), categorical crossentropy loss.
+   - Tracks accuracy, precision, and recall.
+   - Uses `ModelCheckpoint` and `EarlyStopping` callbacks.
+   - Trains up to 50 epochs with dynamically chosen batch size.
+
+6. **Saving**
+   - Best model → `best_drone_model.h5`
+   - Final trained model → `final_drone_classifier.keras`
+
+7. **Embeddings & Thresholds**
+   - Embedding model created from the `embedding_layer`.
+   - Computes per-class embedding centers.
+   - Defines detection thresholds as mean + 2×std of distances.
+   - Saves as `class_centers.npy` and `class_thresholds.npy`.
+
+Outputs
+-------
+- Trained models:
+  - `best_drone_model.h5`
+  - `final_drone_classifier.keras`
+- Embedding data:
+  - `class_centers.npy`
+  - `class_thresholds.npy`
+
+Dependencies
+------------
+- Python 3.x
+- numpy
+- OpenCV (cv2)
+- TensorFlow / Keras
+- scikit-learn
+- matplotlib
+- psutil
+- gc, time, os
+
+Notes
+-----
+- Optimized for machines with GPU acceleration.
+- Automatically scales to system resources but may overwhelm low-spec machines.
+- Embedding + threshold system enables open-set recognition (rejects unknown classes).
+"""
+
+
 import os
 import numpy as np
 import tensorflow as tf

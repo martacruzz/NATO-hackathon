@@ -1,3 +1,53 @@
+"""
+organizer.py
+============
+
+This script organizes spectrogram `.npy` data into the **YOLO training format**.  
+It converts raw spectrograms into RGB images, generates YOLO label files, and 
+splits the dataset into training and validation sets.
+
+Overview
+--------
+- Iterates through dataset directories, where each subdirectory corresponds 
+  to a class index.
+- Loads `.npy` spectrograms, normalizes and resizes them to 640×640.
+- Applies a colormap (`viridis`) to create RGB visualizations and saves them as `.png` images.
+- Generates YOLO `.txt` label files where each spectrogram is represented as a 
+  full-image bounding box:
+  * Center: (0.5, 0.5)
+  * Width: 1.0
+  * Height: 1.0
+- Automatically splits the dataset into training (80%) and validation (20%) subsets.
+
+Output Structure
+----------------
+The script creates a YOLO-compatible dataset folder:
+
+    yolo_dataset/
+    ├── images/
+    │   ├── train/
+    │   └── val/
+    └── labels/
+        ├── train/
+        └── val/
+
+Configuration
+-------------
+- `DATASET_DIR`: Root directory containing class-indexed subfolders with `.npy` files.
+- `OUTPUT_DIR`: Output directory where the YOLO dataset will be created.
+- `CLASSES`: List of class names (must match dataset subfolder indices).
+
+Usage
+-----
+Run the script directly:
+
+    python organizer.py
+
+At the end, the dataset will be ready for use with YOLO training.
+"""
+
+
+
 import os
 import numpy as np
 import cv2
@@ -7,7 +57,7 @@ import random
 import shutil
 
 # Configuration
-DATASET_DIR = "../data"  # Your dataset directory
+DATASET_DIR = "../data"  # Dataset directory
 OUTPUT_DIR = "../yolo_dataset"       # Where to store YOLO formatted data
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(os.path.join(OUTPUT_DIR, "images", "train"), exist_ok=True)

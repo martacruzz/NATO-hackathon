@@ -6,15 +6,65 @@
 # Also, this file could also be way better if we used open-cv to actually label the data,
 # but, due to time constrains, it's not feasible
 
+"""
+bad_auto_label.py
+=================
+
+This script generates **approximate YOLO-style labels** for spectrogram `.npy` 
+files when proper manually labeled data is not available.
+
+Overview
+--------
+- Iterates through dataset directories, where each subdirectory corresponds 
+  to a class index.
+- For every `.npy` spectrogram file, creates a `.txt` label file in YOLO format.
+- Since spectrograms cover the entire frame, bounding boxes are defined as:
+  * Center: (0.5, 0.5)
+  * Width: 1.0
+  * Height: 1.0
+- Labels are stored in corresponding class subdirectories in the output folder.
+
+Output Format
+-------------
+Each `.txt` label file contains a single line:
+
+    class_id x_center y_center width height
+
+where all coordinates are **normalized** between 0 and 1.
+
+Limitations
+-----------
+- The labels are **not precise**: they assume the entire spectrogram 
+  represents the target class.
+- Bounding boxes are uniform and do not reflect specific regions of interest.
+- Intended only as a placeholder for cases where **manual labeling** 
+  is not feasible.
+
+Configuration
+-------------
+- `DATASET_DIR`: Root directory containing subfolders for each class.
+- `OUTPUT_DIR`: Where YOLO `.txt` labels are saved.
+- `CLASSES`: List of class names (must match dataset subfolder indices).
+
+Usage
+-----
+Simply run the script:
+
+    python bad_auto_label.py
+
+All `.npy` files will be paired with YOLO `.txt` label files.
+"""
+
+
 import os
 import numpy as np
 
 # Configuration
-DATASET_DIR = "../data"  # Your dataset directory
+DATASET_DIR = "../data"  # Dataset directory
 OUTPUT_DIR = "../data"       # Where to save YOLO labels
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Class names (same as your index)
+# Class names
 CLASSES = [
     "Background, including WiFi and Bluetooth",
     "DJI Phantom 3",
@@ -69,4 +119,4 @@ for class_idx in range(len(CLASSES)):
             
             print(f"  Created label for {filename}")
 
-print("\n✅ All YOLO labels generated successfully!")
+print("\nAll YOLO labels generated successfully!")

@@ -1,5 +1,43 @@
 # This file auto labels data using an already made yolo model.
 
+"""
+auto_labeler.py
+================
+
+This script automatically labels new spectrogram `.npy` files using a 
+pretrained YOLO model. The output is YOLO-compatible `.txt` label files 
+for each input spectrogram.
+
+Overview
+--------
+- Loads a pretrained YOLO model (`best.pt`) from a previous training run.
+- Iterates through a directory of new `.npy` spectrogram files.
+- Converts each spectrogram into a 640×640 RGB image using a `viridis` colormap.
+- Runs YOLO inference on the image to detect drone classes and bounding boxes.
+- Saves predictions in YOLO format:
+
+      class_id confidence x_center y_center width height
+
+  where all coordinates are normalized (0 to 1).
+
+Configuration
+-------------
+- `NEW_DATA_DIR`: Directory containing unlabeled `.npy` spectrogram files.
+- `OUTPUT_DIR`: Directory where YOLO-format predictions will be saved.
+- Model path is currently set to `'runs/detect/drone_detection/weights/best.pt'`.
+- Inference confidence threshold (`conf`) and IoU threshold (`iou`) can be adjusted in the `model.predict()` call.
+
+Usage
+-----
+Run the script directly:
+
+    python auto_labeler.py
+
+After completion, each input `.npy` file will have a corresponding `.txt` file 
+in `OUTPUT_DIR` containing the predicted labels.
+"""
+
+
 from ultralytics import YOLO
 import os
 import numpy as np
@@ -38,8 +76,9 @@ for filename in os.listdir(NEW_DATA_DIR):
             boxes = result.boxes
             for box in boxes:
                 cls = int(box.cls[0])
+                conf = float(box.conf[0]) 
                 x_center, y_center, width, height = box.xywhn[0].tolist()
-                pred_lines.append(f"{cls} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}")
+                pred_lines.append(f"{cls} {conf:.6f} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}")
         
         # Write to file
         with open(os.path.join(OUTPUT_DIR, f"{base_name}.txt"), 'w') as f:
@@ -47,4 +86,4 @@ for filename in os.listdir(NEW_DATA_DIR):
         
         print(f"Processed {filename} - Found {len(pred_lines)} detections")
 
-print("✅ Auto-labeling complete!")
+print("Auto-labeling complete!")
