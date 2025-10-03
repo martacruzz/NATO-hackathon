@@ -101,7 +101,7 @@ def compute_class_stats(train_embeddings, train_labels, num_known, semantic_dim,
   if hasattr(train_labels, "cpu"):
     Y = train_labels.cpu().numpy()
   else:
-    X = np.array(train_labels)
+    Y = np.array(train_labels)
 
   C = num_known
   D = semantic_dim

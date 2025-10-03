@@ -669,7 +669,7 @@ def train(net, device, semantic_dims, lr, batch_size, margin, num_known_class, m
                 use_evt = True
                 weibull_models = None
                 if use_evt:
-                    weibull_models =  outlier.fit_weibull_per_class(train_X, train_Y, class_means, precisions, tail_size=20)
+                    weibull_models =  outlier.fit_weibull_per_class(train_X, train_Y, class_means, precisions, tail_size=50)
                 # ---------- REFACTORED ----------
 
                 # read all testing data
@@ -706,6 +706,11 @@ def train(net, device, semantic_dims, lr, batch_size, margin, num_known_class, m
                 # decision by threshold: compute d - threshold (broadcast)
                 x_ct = d - thresholds[np.newaxis, :] # shape (M,C)
 
+                # debug
+                passed_distance = np.sum(np.min(x_ct, axis=1) <= 0)   # samples that pass distance-test
+                total = x_ct.shape[0]
+                print(f"Passed distance test (would be accepted before EVT): {passed_distance}/{total}")
+
                 # compute EVT outlier probabilities
                 if use_evt and outlier.SCIPY_AVAILABLE and weibull_models is not None:
                     weibull_probs = outlier.weibull_outlier_probability(d, weibull_models) # (M, C)
@@ -724,13 +729,17 @@ def train(net, device, semantic_dims, lr, batch_size, margin, num_known_class, m
                         # EVT refinement
                         if weibull_probs is not None:
                             # tail probability for being an outlier
-                            evt_cutoff = 0.7 # TODO tune on validation
+                            evt_cutoff = 0.95 # TODO tune on validation
                             if weibull_probs[i, cand] > evt_cutoff:
                                 label_hat[i] = -1
                             else:
                                 label_hat[i] = cand
                         else:
                             label_hat[i] = cand
+
+                    # debug
+                    accepted_after_evt = np.sum(label_hat != -1)
+                    print(f"Accepted after EVT (final known labels): {accepted_after_evt}/{total}")
 
                     # bookkeeping: if this was actually an unknown sample but we missclassified it
                     if test_Y[i] >= num_known and label_hat[i] != -1:
