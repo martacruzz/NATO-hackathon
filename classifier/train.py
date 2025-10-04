@@ -80,6 +80,7 @@ import torch.optim as optim
 import numpy as np
 import os
 from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score
+from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -661,7 +662,7 @@ def train(net, device, semantic_dims, lr, batch_size, margin, num_known_class, m
                 # train_Y = torch tensor (N,)
                 class_means, precisions, covariances = outlier.compute_class_stats(train_X, train_Y, num_known, semantic_dim, reg_lambda=1e-3, use_ledoit=False)
                 # compute per-class percentile thresholds (distance domain)
-                percentile = 99.0 # TODO change this accordingly
+                percentile = 90.92214614466376 # TODO change this accordingly
                 thresholds = outlier.per_class_thresholds_percentile(train_X, train_Y, class_means, precisions, percentile)
                 # thresholds is array shape (num_known, ) - distances in same units as sqrt(d2)
 
@@ -669,7 +670,7 @@ def train(net, device, semantic_dims, lr, batch_size, margin, num_known_class, m
                 use_evt = True
                 weibull_models = None
                 if use_evt:
-                    weibull_models =  outlier.fit_weibull_per_class(train_X, train_Y, class_means, precisions, tail_size=50)
+                    weibull_models =  outlier.fit_weibull_per_class(train_X, train_Y, class_means, precisions, tail_size=49)
                 # ---------- REFACTORED ----------
 
                 # read all testing data
@@ -729,7 +730,7 @@ def train(net, device, semantic_dims, lr, batch_size, margin, num_known_class, m
                         # EVT refinement
                         if weibull_probs is not None:
                             # tail probability for being an outlier
-                            evt_cutoff = 0.95 # TODO tune on validation
+                            evt_cutoff = 0.7927117346786836 # TODO tune on validation
                             if weibull_probs[i, cand] > evt_cutoff:
                                 label_hat[i] = -1
                             else:

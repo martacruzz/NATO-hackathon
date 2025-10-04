@@ -8,3 +8,4 @@ scikit-learn
 umap
 seaborn
 optuna
+sigmf
